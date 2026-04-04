@@ -15,7 +15,7 @@ if [ -d "/opt/android-sdk" ]; then
         GRADLE="gradle"
     fi
 
-    $GRADLE :shared:testDebugUnitTest --no-daemon "$@"
+    $GRADLE :shared:testDebugUnitTest --no-daemon --project-cache-dir /tmp/gradle-test-cache "$@"
 elif [ -f "./gradlew" ]; then
     chmod +x ./gradlew 2>/dev/null || true
     ./gradlew :shared:testDebugUnitTest --no-daemon "$@"
