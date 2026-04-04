@@ -53,11 +53,15 @@ const val MAX_PRICE = 9_999.99
 
 private const val TAG = "OrderStateMachine"
 
-class OrderStateMachine(
+open class OrderStateMachine(
     private val database: AppDatabase,
     private val clock: Clock,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    protected open suspend fun <R> runInTransaction(block: suspend () -> R): R {
+        return database.withTransaction { block() }
+    }
 
     fun observeState(orderId: String): Flow<OrderState> {
         return database.orderDao().observeById(orderId)
@@ -77,12 +81,12 @@ class OrderStateMachine(
         val expiresAt = clock.now().plus(30.minutes).toEpochMilliseconds()
 
         var error: String? = null
-        database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction
+        runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction
             val priceError = validatePrice(order.totalPrice)
             if (priceError != null) {
                 error = priceError
-                return@withTransaction
+                return@runInTransaction
             }
             val pending = order.copy(state = OrderState.PendingTender.name, expiresAt = expiresAt)
             database.orderDao().update(pending)
@@ -100,8 +104,8 @@ class OrderStateMachine(
 
         scope.launch {
             delay(30.minutes)
-            database.withTransaction {
-                val latest = database.orderDao().getById(orderId) ?: return@withTransaction
+            runInTransaction {
+                val latest = database.orderDao().getById(orderId) ?: return@runInTransaction
                 if (latest.state == OrderState.PendingTender.name && (latest.expiresAt ?: now) <= clock.now().toEpochMilliseconds()) {
                     database.orderDao().update(latest.copy(state = OrderState.Expired.name))
                     restockInventory(latest)
@@ -114,9 +118,9 @@ class OrderStateMachine(
 
     suspend fun confirm(orderId: String, role: Role? = null): Boolean {
         if (role == Role.Viewer) return false
-        return database.withTransaction {
-            val latest = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (latest.state != OrderState.PendingTender.name) return@withTransaction false
+        return runInTransaction {
+            val latest = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (latest.state != OrderState.PendingTender.name) return@runInTransaction false
             database.orderDao().update(latest.copy(state = OrderState.Confirmed.name, expiresAt = null))
             AppLogger.i(TAG, "Order $orderId confirmed")
             true
@@ -125,12 +129,12 @@ class OrderStateMachine(
 
     suspend fun cancel(orderId: String, role: Role? = null): Boolean {
         if (role == Role.Viewer) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
             if (order.state == OrderState.Cancelled.name ||
                 order.state == OrderState.Expired.name ||
                 order.state == OrderState.Refunded.name
-            ) return@withTransaction false
+            ) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.Cancelled.name))
             if (order.state == OrderState.PendingTender.name || order.state == OrderState.Confirmed.name) {
                 restockInventory(order)
@@ -142,9 +146,9 @@ class OrderStateMachine(
 
     suspend fun requestReturn(orderId: String, role: Role? = null): Boolean {
         if (role == Role.Viewer || role == Role.Companion) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.Confirmed.name && order.state != OrderState.Delivered.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.Confirmed.name && order.state != OrderState.Delivered.name) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.ReturnRequested.name))
             AppLogger.i(TAG, "Return requested for $orderId")
             true
@@ -153,9 +157,9 @@ class OrderStateMachine(
 
     suspend fun completeReturn(orderId: String, role: Role? = null): Boolean {
         if (role == null || (role != Role.Admin && role != Role.Supervisor)) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.ReturnRequested.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.ReturnRequested.name) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.Returned.name))
             restockInventory(order)
             AppLogger.i(TAG, "Return completed for $orderId, inventory restocked")
@@ -165,9 +169,9 @@ class OrderStateMachine(
 
     suspend fun requestExchange(orderId: String, role: Role? = null): Boolean {
         if (role == Role.Viewer) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.Confirmed.name && order.state != OrderState.Delivered.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.Confirmed.name && order.state != OrderState.Delivered.name) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.ExchangeRequested.name))
             AppLogger.i(TAG, "Exchange requested for $orderId")
             true
@@ -176,9 +180,9 @@ class OrderStateMachine(
 
     suspend fun completeExchange(orderId: String, role: Role? = null): Boolean {
         if (role == null || (role != Role.Admin && role != Role.Supervisor)) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.ExchangeRequested.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.ExchangeRequested.name) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.Exchanged.name))
             restockInventory(order)
             AppLogger.i(TAG, "Exchange completed for $orderId, inventory restocked")
@@ -188,12 +192,12 @@ class OrderStateMachine(
 
     suspend fun requestRefund(orderId: String, role: Role? = null): Boolean {
         if (role == Role.Viewer || role == Role.Companion) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
             if (order.state != OrderState.Confirmed.name &&
                 order.state != OrderState.Delivered.name &&
                 order.state != OrderState.Returned.name
-            ) return@withTransaction false
+            ) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.RefundRequested.name))
             AppLogger.i(TAG, "Refund requested for $orderId")
             true
@@ -202,9 +206,9 @@ class OrderStateMachine(
 
     suspend fun completeRefund(orderId: String, role: Role? = null): Boolean {
         if (role == null || (role != Role.Admin && role != Role.Supervisor)) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.RefundRequested.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.RefundRequested.name) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.Refunded.name))
             restockInventory(order)
             AppLogger.i(TAG, "Refund completed for $orderId, inventory restocked")
@@ -214,9 +218,9 @@ class OrderStateMachine(
 
     suspend fun markAwaitingDelivery(orderId: String, role: Role? = null): Boolean {
         if (role == Role.Viewer) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.Confirmed.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.Confirmed.name) return@runInTransaction false
             database.orderDao().update(
                 order.copy(
                     state = OrderState.AwaitingDelivery.name,
@@ -230,9 +234,9 @@ class OrderStateMachine(
 
     suspend fun markInTransit(orderId: String, role: Role? = null): Boolean {
         if (role == Role.Viewer) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.AwaitingDelivery.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.AwaitingDelivery.name) return@runInTransaction false
             database.orderDao().update(
                 order.copy(deliveryState = DeliveryState.InTransit.name),
             )
@@ -243,9 +247,9 @@ class OrderStateMachine(
 
     suspend fun confirmDelivery(orderId: String, signature: String, role: Role? = null): Boolean {
         if (role == Role.Viewer) return false
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction false
-            if (order.state != OrderState.AwaitingDelivery.name) return@withTransaction false
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
+            if (order.state != OrderState.AwaitingDelivery.name) return@runInTransaction false
             database.orderDao().update(
                 order.copy(
                     state = OrderState.Delivered.name,
@@ -259,9 +263,9 @@ class OrderStateMachine(
     }
 
     suspend fun splitOrder(orderId: String, splitQuantity: Int): Pair<String, String>? {
-        return database.withTransaction {
-            val order = database.orderDao().getById(orderId) ?: return@withTransaction null
-            if (order.quantity < 2 || splitQuantity < 1 || splitQuantity >= order.quantity) return@withTransaction null
+        return runInTransaction {
+            val order = database.orderDao().getById(orderId) ?: return@runInTransaction null
+            if (order.quantity < 2 || splitQuantity < 1 || splitQuantity >= order.quantity) return@runInTransaction null
 
             val leftQty = splitQuantity
             val rightQty = order.quantity - splitQuantity
@@ -300,10 +304,10 @@ class OrderStateMachine(
     }
 
     suspend fun mergeOrders(orderId1: String, orderId2: String): String? {
-        return database.withTransaction {
-            val order1 = database.orderDao().getById(orderId1) ?: return@withTransaction null
-            val order2 = database.orderDao().getById(orderId2) ?: return@withTransaction null
-            if (order1.userId != order2.userId) return@withTransaction null
+        return runInTransaction {
+            val order1 = database.orderDao().getById(orderId1) ?: return@runInTransaction null
+            val order2 = database.orderDao().getById(orderId2) ?: return@runInTransaction null
+            if (order1.userId != order2.userId) return@runInTransaction null
 
             val mergedId = "${orderId1}+${orderId2}"
             val merged = order1.copy(
@@ -330,8 +334,8 @@ class OrderStateMachine(
         val now = clock.now().toEpochMilliseconds()
         val stale = database.orderDao().getExpiredPendingOrders(now)
         stale.forEach { order ->
-            database.withTransaction {
-                val latest = database.orderDao().getById(order.id) ?: return@withTransaction
+            runInTransaction {
+                val latest = database.orderDao().getById(order.id) ?: return@runInTransaction
                 if (latest.state == OrderState.PendingTender.name) {
                     database.orderDao().update(latest.copy(state = OrderState.Expired.name))
                     restockInventory(latest)

@@ -488,10 +488,10 @@ class OrderStateMachineTest {
         val clock = object : kotlinx.datetime.Clock {
             override fun now() = kotlinx.datetime.Instant.fromEpochMilliseconds(clockMillis)
         }
-        return OrderStateMachine(
-            database = FakeOrderDatabase(orders, resources),
-            clock = clock,
-        )
+        val db = FakeOrderDatabase(orders, resources)
+        return object : OrderStateMachine(database = db, clock = clock) {
+            override suspend fun <R> runInTransaction(block: suspend () -> R): R = block()
+        }
     }
 }
 
