@@ -47,8 +47,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.eaglepoint.task136.shared.db.ResourceEntity
 import com.eaglepoint.task136.shared.rbac.Role
 import com.eaglepoint.task136.shared.viewmodel.OrderWorkflowViewModel
+import com.eaglepoint.task136.shared.viewmodel.ResourceListViewModel
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
@@ -64,14 +66,23 @@ private val Coral = Color(0xFFFF7675)
 @Composable
 fun CalendarScreen(
     orderWorkflowViewModel: OrderWorkflowViewModel,
+    resourceListViewModel: ResourceListViewModel,
     roleLabel: String,
     actorId: String,
     onBack: () -> Unit,
     onActivity: () -> Unit,
 ) {
     val orderState by orderWorkflowViewModel.state.collectAsState()
+    val resourceState by resourceListViewModel.state.collectAsState()
     val actorRole = Role.entries.firstOrNull { it.name == roleLabel } ?: Role.Viewer
     val canManage = roleLabel != "Viewer"
+    var selectedResource by remember { mutableStateOf<ResourceEntity?>(null) }
+
+    LaunchedEffect(resourceState.resources) {
+        if (selectedResource == null && resourceState.resources.isNotEmpty()) {
+            selectedResource = resourceState.resources.first()
+        }
+    }
 
     val today = remember {
         Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
@@ -253,6 +264,42 @@ fun CalendarScreen(
                 }
             }
 
+            // Resource selector
+            item {
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(2.dp),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Select Resource", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        val displayResources = resourceState.resources.take(20)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            displayResources.forEach { resource ->
+                                val isSelected = selectedResource?.id == resource.id
+                                FilledTonalButton(
+                                    onClick = { selectedResource = resource },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = if (isSelected) Purple else Purple.copy(alpha = 0.08f),
+                                        contentColor = if (isSelected) Color.White else Purple,
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                ) {
+                                    Text(resource.name, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Selected date details
             item {
                 Spacer(Modifier.height(16.dp))
@@ -305,7 +352,13 @@ fun CalendarScreen(
                                         if (canManage) {
                                             FilledTonalButton(
                                                 onClick = {
-                                                    orderWorkflowViewModel.createPendingTenderDemo(actorRole, actorId)
+                                                    val resId = selectedResource?.id ?: return@FilledTonalButton
+                                                    orderWorkflowViewModel.createPendingTender(
+                                                        role = actorRole,
+                                                        actorId = actorId,
+                                                        resourceId = resId,
+                                                        quantity = 1,
+                                                    )
                                                     onActivity()
                                                 },
                                                 shape = RoundedCornerShape(8.dp),

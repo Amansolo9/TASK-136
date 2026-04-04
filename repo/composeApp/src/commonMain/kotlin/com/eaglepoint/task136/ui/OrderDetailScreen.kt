@@ -123,6 +123,7 @@ fun OrderDetailScreen(
                             ActionButton("Return", Amber, canManage) { orderWorkflowViewModel.requestReturn(actorRole); onActivity() }
                             ActionButton("Exchange", Blue, canManage) { orderWorkflowViewModel.requestExchange(actorRole); onActivity() }
                             ActionButton("Refund", Coral, canManage && roleLabel != "Companion") { orderWorkflowViewModel.requestRefund(actorRole); onActivity() }
+                            ActionButton("Split", Amber, canManage) { orderWorkflowViewModel.splitOrder(actorRole); onActivity() }
                             ActionButton("Receipt", Purple, canManage) { onActivity() }
                         }
                     }

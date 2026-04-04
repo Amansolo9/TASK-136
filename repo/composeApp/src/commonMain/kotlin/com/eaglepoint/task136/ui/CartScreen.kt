@@ -50,6 +50,7 @@ fun CartScreen(
     orderFinanceViewModel: OrderFinanceViewModel,
     roleLabel: String,
     actorId: String,
+    delegateForUserId: String? = null,
     onBack: () -> Unit,
     onActivity: () -> Unit,
 ) {
@@ -109,19 +110,30 @@ fun CartScreen(
             item {
                 Spacer(Modifier.height(16.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { orderFinanceViewModel.addDemoItem(actorRole, actorId); onActivity() }, enabled = canManage,
+                    FilledTonalButton(onClick = {
+                        orderFinanceViewModel.addCartItem(
+                            role = actorRole,
+                            actorId = actorId,
+                            delegateForUserId = delegateForUserId,
+                            resourceId = "res-1",
+                            label = "Service Package ${financeState.cart.size + 1}",
+                            quantity = 1,
+                            unitPrice = 49.99,
+                        )
+                        onActivity()
+                    }, enabled = canManage,
                         shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.filledTonalButtonColors(containerColor = Green.copy(alpha = 0.12f), contentColor = Green)) {
                         Text("Add Item", fontSize = 12.sp)
                     }
-                    FilledTonalButton(onClick = { orderFinanceViewModel.mergeFirstTwoItems(actorRole); onActivity() }, enabled = canManage,
+                    FilledTonalButton(onClick = { orderFinanceViewModel.mergeFirstTwoItems(actorRole, actorId, delegateForUserId); onActivity() }, enabled = canManage,
                         shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.filledTonalButtonColors(containerColor = Blue.copy(alpha = 0.12f), contentColor = Blue)) {
                         Text("Merge", fontSize = 12.sp)
                     }
-                    FilledTonalButton(onClick = { orderFinanceViewModel.splitFirstItem(actorRole); onActivity() }, enabled = canManage,
+                    FilledTonalButton(onClick = { orderFinanceViewModel.splitFirstItem(actorRole, actorId, delegateForUserId); onActivity() }, enabled = canManage,
                         shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.filledTonalButtonColors(containerColor = Amber.copy(alpha = 0.12f), contentColor = Amber)) {
                         Text("Split", fontSize = 12.sp)
                     }
-                    FilledTonalButton(onClick = { orderFinanceViewModel.generateInvoice(actorRole, actorId); onActivity() }, enabled = canManage && financeState.cart.isNotEmpty(),
+                    FilledTonalButton(onClick = { orderFinanceViewModel.generateInvoice(actorRole, actorId, delegateForUserId); onActivity() }, enabled = canManage && financeState.cart.isNotEmpty(),
                         shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.filledTonalButtonColors(containerColor = Purple.copy(alpha = 0.12f), contentColor = Purple)) {
                         Text("Checkout", fontSize = 12.sp)
                     }

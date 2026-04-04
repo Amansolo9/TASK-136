@@ -73,4 +73,5 @@ private class FakeResourceDao : ResourceDao {
     override suspend fun getById(id: String) = map[id]
     override suspend fun page(limit: Int, offset: Int) = map.values.drop(offset).take(limit)
     override suspend fun countAll() = map.size
+    override suspend fun deleteById(id: String) { map.remove(id) }
 }

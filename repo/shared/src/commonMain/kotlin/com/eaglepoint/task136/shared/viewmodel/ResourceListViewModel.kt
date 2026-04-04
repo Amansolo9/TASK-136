@@ -22,6 +22,7 @@ data class ResourceListState(
 class ResourceListViewModel(
     private val resourceDao: ResourceDao,
     private val validationService: ValidationService,
+    private val isDebug: Boolean = false,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -32,7 +33,7 @@ class ResourceListViewModel(
         scope.launch(ioDispatcher) {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                if (resourceDao.countAll() == 0) {
+                if (isDebug && resourceDao.countAll() == 0) {
                     val allergenOptions = listOf("none", "gluten", "dairy", "nuts", "soy", "eggs", "shellfish")
                     val seed = (1..5000).map { index ->
                         ResourceEntity(
@@ -53,6 +54,30 @@ class ResourceListViewModel(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = "Failed to load resources: ${e.message}")
             }
+        }
+    }
+
+    fun addResource(name: String, category: String, availableUnits: Int, unitPrice: Double) {
+        scope.launch(ioDispatcher) {
+            val id = "res-${kotlinx.datetime.Clock.System.now().toEpochMilliseconds()}"
+            val resource = ResourceEntity(
+                id = id,
+                name = name,
+                category = category,
+                availableUnits = availableUnits,
+                unitPrice = unitPrice,
+            )
+            resourceDao.upsert(resource)
+            val rows = resourceDao.page(limit = 5000, offset = 0)
+            _state.value = _state.value.copy(resources = rows)
+        }
+    }
+
+    fun deleteResource(resourceId: String) {
+        scope.launch(ioDispatcher) {
+            resourceDao.deleteById(resourceId)
+            val rows = resourceDao.page(limit = 5000, offset = 0)
+            _state.value = _state.value.copy(resources = rows)
         }
     }
 

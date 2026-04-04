@@ -78,6 +78,10 @@ private class FakeOrderDao(
     override suspend fun upsert(order: OrderEntity) = Unit
     override suspend fun update(order: OrderEntity) = Unit
     override suspend fun getById(orderId: String): OrderEntity? = orders.firstOrNull { it.id == orderId }
+    override suspend fun getByIdForActor(orderId: String, actorId: String): OrderEntity? =
+        orders.firstOrNull { it.id == orderId && it.userId == actorId }
+    override suspend fun getByIdForOwnerOrDelegate(orderId: String, ownerId: String, delegateOwnerId: String): OrderEntity? =
+        orders.firstOrNull { it.id == orderId && it.userId in listOf(ownerId, delegateOwnerId) }
     override fun observeById(orderId: String): Flow<OrderEntity?> = emptyFlow()
     override suspend fun getActiveByResource(resourceId: String): List<OrderEntity> = orders.filter { it.resourceId == resourceId }
     override suspend fun deleteById(orderId: String) = Unit

@@ -14,5 +14,7 @@ fun databaseModule(database: AppDatabase): Module = module {
     single { database.deviceBindingDao() }
     single { database.governanceDao() }
     single { database.meetingDao() }
+    single { database.walletDao() }
+    single { database.invoiceDao() }
     single { database.learningDao() }
 }

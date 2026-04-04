@@ -22,7 +22,6 @@ enum class OrderState {
     PendingTender,
     Confirmed,
     Cancelled,
-    Expired,
     PartiallyFulfilled,
     ReturnRequested,
     Returned,
@@ -88,6 +87,20 @@ open class OrderStateMachine(
                 error = priceError
                 return@runInTransaction
             }
+            if (order.paymentMethod == PaymentMethod.InternalWallet.name) {
+                val wallet = database.walletDao().getByUserId(order.userId)
+                if (wallet == null || wallet.balance < order.totalPrice) {
+                    error = "Insufficient wallet balance"
+                    return@runInTransaction
+                }
+                database.walletDao().update(
+                    wallet.copy(
+                        balance = wallet.balance - order.totalPrice,
+                        updatedAt = clock.now().toEpochMilliseconds(),
+                    ),
+                )
+                AppLogger.i(TAG, "Debited ${order.totalPrice} from wallet for user ${order.userId}")
+            }
             val pending = order.copy(state = OrderState.PendingTender.name, expiresAt = expiresAt)
             database.orderDao().update(pending)
             AppLogger.i(TAG, "Order $orderId transitioned to PendingTender")
@@ -107,7 +120,12 @@ open class OrderStateMachine(
             runInTransaction {
                 val latest = database.orderDao().getById(orderId) ?: return@runInTransaction
                 if (latest.state == OrderState.PendingTender.name && (latest.expiresAt ?: now) <= clock.now().toEpochMilliseconds()) {
-                    database.orderDao().update(latest.copy(state = OrderState.Expired.name))
+                    database.orderDao().update(
+                        latest.copy(
+                            state = OrderState.Cancelled.name,
+                            notes = "Auto-cancelled: pending tender timeout",
+                        ),
+                    )
                     restockInventory(latest)
                     AppLogger.i(TAG, "Order $orderId auto-expired after 30 minutes")
                 }
@@ -132,7 +150,6 @@ open class OrderStateMachine(
         return runInTransaction {
             val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
             if (order.state == OrderState.Cancelled.name ||
-                order.state == OrderState.Expired.name ||
                 order.state == OrderState.Refunded.name
             ) return@runInTransaction false
             database.orderDao().update(order.copy(state = OrderState.Cancelled.name))
@@ -238,7 +255,10 @@ open class OrderStateMachine(
             val order = database.orderDao().getById(orderId) ?: return@runInTransaction false
             if (order.state != OrderState.AwaitingDelivery.name) return@runInTransaction false
             database.orderDao().update(
-                order.copy(deliveryState = DeliveryState.InTransit.name),
+                order.copy(
+                    deliveryState = DeliveryState.InTransit.name,
+                    notes = (order.notes?.let { "$it; " } ?: "") + "InTransit at ${clock.now().toEpochMilliseconds()}",
+                ),
             )
             AppLogger.i(TAG, "Order $orderId marked in transit")
             true
@@ -288,11 +308,12 @@ open class OrderStateMachine(
                 state = OrderState.PartiallyFulfilled.name,
             )
 
+            val lineItems = database.orderLineItemDao().getByOrderId(orderId)
+
             database.orderDao().upsert(leftOrder)
             database.orderDao().upsert(rightOrder)
             database.orderDao().deleteById(orderId)
 
-            val lineItems = database.orderLineItemDao().getByOrderId(orderId)
             lineItems.forEach { item ->
                 database.orderLineItemDao().upsert(item.copy(id = "${item.id}-a", orderId = leftId))
                 database.orderLineItemDao().upsert(item.copy(id = "${item.id}-b", orderId = rightId))
@@ -310,6 +331,9 @@ open class OrderStateMachine(
             if (order1.userId != order2.userId) return@runInTransaction null
 
             val mergedId = "${orderId1}+${orderId2}"
+            val items1 = database.orderLineItemDao().getByOrderId(orderId1)
+            val items2 = database.orderLineItemDao().getByOrderId(orderId2)
+
             val merged = order1.copy(
                 id = mergedId,
                 quantity = order1.quantity + order2.quantity,
@@ -319,8 +343,6 @@ open class OrderStateMachine(
             database.orderDao().deleteById(orderId1)
             database.orderDao().deleteById(orderId2)
 
-            val items1 = database.orderLineItemDao().getByOrderId(orderId1)
-            val items2 = database.orderLineItemDao().getByOrderId(orderId2)
             (items1 + items2).forEach { item ->
                 database.orderLineItemDao().upsert(item.copy(orderId = mergedId))
             }
@@ -337,7 +359,12 @@ open class OrderStateMachine(
             runInTransaction {
                 val latest = database.orderDao().getById(order.id) ?: return@runInTransaction
                 if (latest.state == OrderState.PendingTender.name) {
-                    database.orderDao().update(latest.copy(state = OrderState.Expired.name))
+                    database.orderDao().update(
+                        latest.copy(
+                            state = OrderState.Cancelled.name,
+                            notes = "Auto-cancelled: pending tender timeout",
+                        ),
+                    )
                     restockInventory(latest)
                     AppLogger.i(TAG, "Stale order ${order.id} expired on startup, inventory restocked")
                 }
@@ -348,5 +375,17 @@ open class OrderStateMachine(
     private suspend fun restockInventory(order: OrderEntity) {
         val resource = database.resourceDao().getById(order.resourceId) ?: return
         database.resourceDao().update(resource.copy(availableUnits = resource.availableUnits + order.quantity))
+        if (order.paymentMethod == PaymentMethod.InternalWallet.name) {
+            val wallet = database.walletDao().getByUserId(order.userId)
+            if (wallet != null) {
+                database.walletDao().update(
+                    wallet.copy(
+                        balance = wallet.balance + order.totalPrice,
+                        updatedAt = clock.now().toEpochMilliseconds(),
+                    ),
+                )
+                AppLogger.i(TAG, "Credited ${order.totalPrice} back to wallet for user ${order.userId}")
+            }
+        }
     }
 }

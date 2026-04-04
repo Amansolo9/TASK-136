@@ -18,18 +18,24 @@ import com.eaglepoint.task136.shared.viewmodel.OrderFinanceViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderWorkflowViewModel
 import com.eaglepoint.task136.shared.viewmodel.ResourceListViewModel
 import com.eaglepoint.task136.ui.CartFragment
+import com.eaglepoint.task136.ui.CalendarFragment
 import com.eaglepoint.task136.ui.DashboardFragment
+import com.eaglepoint.task136.ui.InvoiceDetailFragment
 import com.eaglepoint.task136.ui.LearningFragment
 import com.eaglepoint.task136.ui.LoginFragment
+import com.eaglepoint.task136.ui.MeetingDetailFragment
 import com.eaglepoint.task136.ui.NavigationHost
 import com.eaglepoint.task136.ui.OrderDetailFragment
 import com.eaglepoint.task136.shared.viewmodel.LearningViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
 
 class MainActivity : AppCompatActivity(), NavigationHost {
+    private var sessionMonitorJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,15 +57,23 @@ class MainActivity : AppCompatActivity(), NavigationHost {
             koin.get<OrderStateMachine>().expireStaleOrders()
         }
 
-        // Session expiry monitoring — only react to transitions FROM authenticated TO unauthenticated
+        // Session expiry monitoring
         val authVm: AuthViewModel = koin.get()
         var wasAuthenticated = authVm.state.value.isAuthenticated
         lifecycleScope.launch {
             authVm.state.collectLatest { state ->
+                authVm.ensureSessionActive()
                 if (wasAuthenticated && !state.isAuthenticated) {
                     showLogin()
                 }
                 wasAuthenticated = state.isAuthenticated
+            }
+        }
+        sessionMonitorJob?.cancel()
+        sessionMonitorJob = lifecycleScope.launch {
+            while (true) {
+                delay(30_000)
+                authVm.ensureSessionActive()
             }
         }
 
@@ -102,7 +116,7 @@ class MainActivity : AppCompatActivity(), NavigationHost {
     }
 
     override fun navigateToCalendar() {
-        replaceFragment(DashboardFragment()) // Calendar not yet a Fragment
+        replaceFragment(CalendarFragment())
     }
 
     override fun navigateToCart() {
@@ -114,11 +128,11 @@ class MainActivity : AppCompatActivity(), NavigationHost {
     }
 
     override fun navigateToInvoiceDetail(invoiceId: String) {
-        replaceFragment(DashboardFragment()) // Invoice detail not yet a Fragment
+        replaceFragment(InvoiceDetailFragment.newInstance(invoiceId))
     }
 
     override fun navigateToMeetingDetail(meetingId: String) {
-        replaceFragment(DashboardFragment()) // Meeting detail not yet a Fragment
+        replaceFragment(MeetingDetailFragment.newInstance(meetingId))
     }
 
     override fun navigateToLearning() {
@@ -129,5 +143,20 @@ class MainActivity : AppCompatActivity(), NavigationHost {
         if (!supportFragmentManager.popBackStackImmediate()) {
             showDashboard()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        GlobalContext.get().get<AuthViewModel>().ensureSessionActive()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        GlobalContext.get().get<AuthViewModel>().touchSession()
+    }
+
+    override fun onDestroy() {
+        sessionMonitorJob?.cancel()
+        super.onDestroy()
     }
 }

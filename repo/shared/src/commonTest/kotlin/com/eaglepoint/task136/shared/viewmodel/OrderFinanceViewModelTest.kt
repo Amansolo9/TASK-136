@@ -24,6 +24,7 @@ import kotlin.test.assertTrue
 class OrderFinanceViewModelTest {
     private val notificationGateway = object : NotificationGateway {
         override suspend fun scheduleInvoiceReady(invoiceId: String, total: Double) = Unit
+        override suspend fun scheduleMeetingNotification(meetingId: String, message: String) = Unit
     }
 
     private val receiptGateway = object : ReceiptGateway {
@@ -40,7 +41,9 @@ class OrderFinanceViewModelTest {
         override suspend fun getByUser(userId: String) = emptyList<CartItemEntity>()
         override fun observeByUser(userId: String): Flow<List<CartItemEntity>> = emptyFlow()
         override suspend fun getById(id: String): CartItemEntity? = null
+        override suspend fun getByIdForUser(id: String, userId: String): CartItemEntity? = null
         override suspend fun deleteById(id: String) = Unit
+        override suspend fun deleteByIdForUser(id: String, userId: String) = Unit
         override suspend fun clearForUser(userId: String) = Unit
         override suspend fun upsertAll(items: List<CartItemEntity>) = Unit
     }
@@ -88,7 +91,7 @@ class OrderFinanceViewModelTest {
     fun `split requires quantity at least 2`() {
         val vm = createVm()
         vm.addDemoItem(Role.Admin, "admin")
-        vm.splitFirstItem(Role.Admin)
+        vm.splitFirstItem(Role.Admin, "admin")
 
         assertEquals("Split requires quantity >= 2", vm.state.value.note)
     }
@@ -97,7 +100,7 @@ class OrderFinanceViewModelTest {
     fun `merge requires at least 2 items`() {
         val vm = createVm()
         vm.addDemoItem(Role.Admin, "admin")
-        vm.mergeFirstTwoItems(Role.Admin)
+        vm.mergeFirstTwoItems(Role.Admin, "admin")
 
         // No error, just no-op (cart stays at 1)
         assertEquals(1, vm.state.value.cart.size)

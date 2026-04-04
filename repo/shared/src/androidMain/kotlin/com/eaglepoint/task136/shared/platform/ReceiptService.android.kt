@@ -1,7 +1,9 @@
 package com.eaglepoint.task136.shared.platform
 
+import android.content.Intent
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -12,7 +14,7 @@ actual class ReceiptService {
         try {
             val context = AndroidPlatformContext.require()
 
-            withContext(Dispatchers.IO) {
+            val file = withContext(Dispatchers.IO) {
                 val document = PdfDocument()
                 val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
                 val page = document.startPage(pageInfo)
@@ -37,12 +39,25 @@ actual class ReceiptService {
                 val file = File(context.cacheDir, "receipt-${data.receiptId}.pdf")
                 FileOutputStream(file).use { output -> document.writeTo(output) }
                 document.close()
+                file
             }
-            // PDF saved to cache. Share intent removed to prevent crashes
-            // from background/application context. PDF can be accessed at:
-            // context.cacheDir/receipt-{id}.pdf
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file,
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "Receipt ${data.receiptId}")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(shareIntent, "Share receipt").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
         } catch (e: Exception) {
-            println("[ReceiptService] Error generating PDF: ${e.message}")
+            com.eaglepoint.task136.shared.logging.AppLogger.w("ReceiptService", "Error generating PDF: ${e.message}")
         }
     }
 }

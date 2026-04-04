@@ -13,8 +13,17 @@ class AbacPolicyEvaluator {
         return when (role) {
             Role.Admin -> true
             Role.Supervisor -> true
+            Role.Operator, Role.Companion, Role.Viewer -> false
+        }
+    }
+
+    fun canManageAttendee(role: Role, context: AccessContext): Boolean {
+        if (!context.deviceTrusted) return false
+        return when (role) {
+            Role.Admin -> true
+            Role.Supervisor -> true
             Role.Operator, Role.Companion -> context.requesterId == context.ownerId || context.isDelegate
-            Role.Viewer -> context.requesterId == context.ownerId
+            Role.Viewer -> false
         }
     }
 

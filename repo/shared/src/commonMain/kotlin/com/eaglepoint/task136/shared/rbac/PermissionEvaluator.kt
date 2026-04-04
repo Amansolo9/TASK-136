@@ -2,7 +2,7 @@ package com.eaglepoint.task136.shared.rbac
 
 enum class Role { Admin, Supervisor, Operator, Viewer, Companion }
 
-enum class ResourceType { Resource, Order, User, Wallet, Analytics, Ledger }
+enum class ResourceType { Resource, Order, User, Wallet, Analytics, Ledger, Meeting, Learning }
 
 enum class Action { Read, Write, Delete, Approve }
 
@@ -51,4 +51,14 @@ fun defaultRules(): List<PermissionRule> = listOf(
     PermissionRule(Role.Viewer, ResourceType.Resource, "*", setOf(Action.Read)),
     PermissionRule(Role.Companion, ResourceType.Order, "*", setOf(Action.Read, Action.Write)),
     PermissionRule(Role.Companion, ResourceType.Resource, "*", setOf(Action.Read)),
+    PermissionRule(Role.Admin, ResourceType.Meeting, "*", Action.entries.toSet()),
+    PermissionRule(Role.Supervisor, ResourceType.Meeting, "*", setOf(Action.Read, Action.Write, Action.Approve)),
+    PermissionRule(Role.Operator, ResourceType.Meeting, "*", setOf(Action.Read, Action.Write)),
+    PermissionRule(Role.Viewer, ResourceType.Meeting, "*", setOf(Action.Read)),
+    PermissionRule(Role.Companion, ResourceType.Meeting, "*", setOf(Action.Read, Action.Write)),
+    PermissionRule(Role.Admin, ResourceType.Learning, "*", Action.entries.toSet()),
+    PermissionRule(Role.Supervisor, ResourceType.Learning, "*", setOf(Action.Read, Action.Write)),
+    PermissionRule(Role.Operator, ResourceType.Learning, "*", setOf(Action.Read, Action.Write)),
+    PermissionRule(Role.Viewer, ResourceType.Learning, "*", setOf(Action.Read)),
+    PermissionRule(Role.Companion, ResourceType.Learning, "*", setOf(Action.Read, Action.Write)),
 )

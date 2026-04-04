@@ -1,6 +1,7 @@
 package com.eaglepoint.task136.shared.db
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -43,6 +44,8 @@ data class ResourceEntity(
 data class CartItemEntity(
     @PrimaryKey val id: String,
     val userId: String,
+    @androidx.room.ColumnInfo(defaultValue = "")
+    val actorId: String,
     val resourceId: String,
     val label: String,
     val quantity: Int,
@@ -79,6 +82,12 @@ data class OrderEntity(
 @Entity(
     tableName = "order_line_items",
     indices = [Index(value = ["orderId"])],
+    foreignKeys = [ForeignKey(
+        entity = OrderEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["orderId"],
+        onDelete = ForeignKey.CASCADE,
+    )],
 )
 data class OrderLineItemEntity(
     @PrimaryKey val id: String,
@@ -136,11 +145,15 @@ data class DiscrepancyTicketEntity(
 
 @Entity(
     tableName = "meetings",
-    indices = [Index(value = ["organizerId", "startTime"])],
+    indices = [
+        Index(value = ["organizerId", "startTime"]),
+        Index(value = ["resourceId", "startTime"]),
+    ],
 )
 data class MeetingEntity(
     @PrimaryKey val id: String,
     val organizerId: String,
+    val resourceId: String,
     val title: String,
     val startTime: Long,
     val endTime: Long,
@@ -153,6 +166,12 @@ data class MeetingEntity(
 @Entity(
     tableName = "meeting_attendees",
     indices = [Index(value = ["meetingId"])],
+    foreignKeys = [ForeignKey(
+        entity = MeetingEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["meetingId"],
+        onDelete = ForeignKey.CASCADE,
+    )],
 )
 data class MeetingAttendeeEntity(
     @PrimaryKey val id: String,
@@ -160,6 +179,17 @@ data class MeetingAttendeeEntity(
     val userId: String,
     val displayName: String,
     val rsvpStatus: String = "Pending",
+)
+
+@Entity(
+    tableName = "wallets",
+    indices = [Index(value = ["userId"], unique = true)],
+)
+data class WalletEntity(
+    @PrimaryKey val id: String,
+    val userId: String,
+    val balance: Double,
+    val updatedAt: Long,
 )
 
 @Entity(
@@ -187,4 +217,19 @@ data class EnrollmentEntity(
     val progressPercent: Int = 0,
     val enrolledAt: Long,
     val completedAt: Long? = null,
+)
+
+@Entity(
+    tableName = "invoices",
+    indices = [Index(value = ["ownerId", "createdAt"])],
+)
+data class InvoiceEntity(
+    @PrimaryKey val id: String,
+    val subtotal: Double,
+    val tax: Double,
+    val total: Double,
+    val orderId: String? = null,
+    val ownerId: String,
+    val actorId: String,
+    val createdAt: Long,
 )

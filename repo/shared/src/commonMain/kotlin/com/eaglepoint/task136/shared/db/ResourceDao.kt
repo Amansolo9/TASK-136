@@ -25,4 +25,7 @@ interface ResourceDao {
 
     @Query("SELECT COUNT(*) FROM resources")
     suspend fun countAll(): Int
+
+    @Query("DELETE FROM resources WHERE id = :id")
+    suspend fun deleteById(id: String)
 }

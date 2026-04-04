@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -62,6 +63,12 @@ class AuthViewModel(
             return
         }
 
+        val policyResult = securityRepository.validatePassword(snapshot.password)
+        if (!policyResult.isValid) {
+            _state.value = snapshot.copy(error = policyResult.errors.first())
+            return
+        }
+
         scope.launch(ioDispatcher) {
             if (!securityRepository.canAuthenticate(userId, clock.now())) {
                 _state.value = snapshot.copy(error = "Too many attempts. Try again later.")
@@ -99,23 +106,22 @@ class AuthViewModel(
 
     fun ensureSessionActive() {
         val now = clock.now()
-        val idleExpiry = _state.value.sessionExpiresAt
-        val absoluteExpiry = _state.value.absoluteSessionExpiresAt
-
-        if (idleExpiry != null && now >= idleExpiry) {
-            logout("Session expired. Please sign in again.")
-            return
-        }
-        if (absoluteExpiry != null && now >= absoluteExpiry) {
-            logout("Maximum session duration reached. Please sign in again.")
-            return
+        _state.update { current ->
+            when {
+                current.sessionExpiresAt != null && now >= current.sessionExpiresAt!! ->
+                    AuthUiState(username = current.username, error = "Session expired. Please sign in again.")
+                current.absoluteSessionExpiresAt != null && now >= current.absoluteSessionExpiresAt!! ->
+                    AuthUiState(username = current.username, error = "Maximum session duration reached. Please sign in again.")
+                else -> current
+            }
         }
     }
 
     fun touchSession() {
-        val snapshot = _state.value
-        if (!snapshot.isAuthenticated) return
-        _state.value = snapshot.copy(sessionExpiresAt = clock.now().plus(sessionDuration))
+        _state.update { current ->
+            if (current.isAuthenticated) current.copy(sessionExpiresAt = clock.now().plus(sessionDuration))
+            else current
+        }
     }
 
     fun logout(message: String? = null) {

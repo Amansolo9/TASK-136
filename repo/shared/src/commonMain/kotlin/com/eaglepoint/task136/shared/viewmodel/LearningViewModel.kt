@@ -58,7 +58,7 @@ class LearningViewModel(
     }
 
     fun enroll(role: Role, userId: String, courseId: String) {
-        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Read)) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Learning, "*", Action.Read)) {
             _state.value = _state.value.copy(note = "Enrollment denied for role")
             return
         }
@@ -84,7 +84,7 @@ class LearningViewModel(
     }
 
     fun updateProgress(role: Role, enrollmentId: String, percent: Int) {
-        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Write)) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Learning, "*", Action.Write)) {
             _state.value = _state.value.copy(note = "Progress update denied for role")
             return
         }

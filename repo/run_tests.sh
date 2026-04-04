@@ -16,6 +16,11 @@ if [ -d "/opt/android-sdk" ]; then
     fi
 
     $GRADLE :shared:testDebugUnitTest --no-daemon "$@"
+elif [ -f "./gradlew" ]; then
+    chmod +x ./gradlew 2>/dev/null || true
+    ./gradlew :shared:testDebugUnitTest --no-daemon "$@"
+elif [ -f "./gradlew.bat" ]; then
+    ./gradlew.bat :shared:testDebugUnitTest --no-daemon "$@"
 else
     # Stop the app service first — it shares /workspace and its Gradle
     # locks conflict with the test run.

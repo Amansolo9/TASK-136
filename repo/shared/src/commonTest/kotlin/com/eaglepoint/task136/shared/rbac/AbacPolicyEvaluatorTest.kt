@@ -84,8 +84,8 @@ class AbacPolicyEvaluatorTest {
     }
 
     @Test
-    fun `operator can read own attendee`() {
-        assertTrue(evaluator.canReadAttendee(Role.Operator, ctx(requester = "op1", owner = "op1", trusted = true)))
+    fun `operator cannot read attendee list`() {
+        assertFalse(evaluator.canReadAttendee(Role.Operator, ctx(requester = "op1", owner = "op1", trusted = true)))
     }
 
     @Test
@@ -94,18 +94,18 @@ class AbacPolicyEvaluatorTest {
     }
 
     @Test
-    fun `operator can read delegated attendee`() {
-        assertTrue(evaluator.canReadAttendee(Role.Operator, ctx(requester = "op1", owner = "op2", delegate = true, trusted = true)))
+    fun `operator cannot read delegated attendee list`() {
+        assertFalse(evaluator.canReadAttendee(Role.Operator, ctx(requester = "op1", owner = "op2", delegate = true, trusted = true)))
     }
 
     @Test
-    fun `companion can read own attendee`() {
-        assertTrue(evaluator.canReadAttendee(Role.Companion, ctx(requester = "c1", owner = "c1", trusted = true)))
+    fun `companion cannot read own attendee list`() {
+        assertFalse(evaluator.canReadAttendee(Role.Companion, ctx(requester = "c1", owner = "c1", trusted = true)))
     }
 
     @Test
-    fun `companion can read delegated attendee`() {
-        assertTrue(evaluator.canReadAttendee(Role.Companion, ctx(requester = "c1", owner = "op1", delegate = true, trusted = true)))
+    fun `companion cannot read delegated attendee list`() {
+        assertFalse(evaluator.canReadAttendee(Role.Companion, ctx(requester = "c1", owner = "op1", delegate = true, trusted = true)))
     }
 
     @Test
@@ -114,8 +114,8 @@ class AbacPolicyEvaluatorTest {
     }
 
     @Test
-    fun `viewer can read own attendee`() {
-        assertTrue(evaluator.canReadAttendee(Role.Viewer, ctx(requester = "v1", owner = "v1", trusted = true)))
+    fun `viewer cannot read own attendee list`() {
+        assertFalse(evaluator.canReadAttendee(Role.Viewer, ctx(requester = "v1", owner = "v1", trusted = true)))
     }
 
     @Test
@@ -126,6 +126,28 @@ class AbacPolicyEvaluatorTest {
     @Test
     fun `viewer cannot read attendee even as delegate`() {
         assertFalse(evaluator.canReadAttendee(Role.Viewer, ctx(requester = "v1", owner = "v2", delegate = true, trusted = true)))
+    }
+
+    // ── canManageAttendee ───────────────────────────────────────
+
+    @Test
+    fun `operator can manage own attendee`() {
+        assertTrue(evaluator.canManageAttendee(Role.Operator, ctx(requester = "op1", owner = "op1", trusted = true)))
+    }
+
+    @Test
+    fun `operator can manage delegated attendee`() {
+        assertTrue(evaluator.canManageAttendee(Role.Operator, ctx(requester = "op1", owner = "op2", delegate = true, trusted = true)))
+    }
+
+    @Test
+    fun `companion can manage delegated attendee`() {
+        assertTrue(evaluator.canManageAttendee(Role.Companion, ctx(requester = "c1", owner = "op1", delegate = true, trusted = true)))
+    }
+
+    @Test
+    fun `viewer cannot manage attendee`() {
+        assertFalse(evaluator.canManageAttendee(Role.Viewer, ctx(requester = "v1", owner = "v1", trusted = true)))
     }
 
     // ── untrusted device blocks everything ───────────────────────

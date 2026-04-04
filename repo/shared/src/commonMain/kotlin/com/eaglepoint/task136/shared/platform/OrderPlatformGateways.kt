@@ -6,6 +6,7 @@ import kotlin.time.Duration.Companion.minutes
 
 interface NotificationGateway {
     suspend fun scheduleInvoiceReady(invoiceId: String, total: Double)
+    suspend fun scheduleMeetingNotification(meetingId: String, message: String)
 }
 
 interface ReceiptGateway {
@@ -23,6 +24,16 @@ class PlatformNotificationGateway(
             title = "Invoice ready",
             body = "$invoiceId total $${"%.2f".format(total)}",
             at = clock.now().plus(2.minutes),
+            timeZone = timeZone,
+        )
+    }
+
+    override suspend fun scheduleMeetingNotification(meetingId: String, message: String) {
+        scheduler.scheduleWithQuietHours(
+            id = "meeting-$meetingId",
+            title = "Meeting update",
+            body = message,
+            at = clock.now().plus(1.minutes),
             timeZone = timeZone,
         )
     }

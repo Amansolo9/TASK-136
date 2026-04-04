@@ -31,9 +31,13 @@ class CoreRepository(
         }
     }
 
-    suspend fun getOrder(role: Role, id: String): OrderEntity? = withContext(Dispatchers.IO) {
+    suspend fun getOrder(role: Role, id: String, actorId: String, delegateForUserId: String? = null): OrderEntity? = withContext(Dispatchers.IO) {
         permissionEvaluator.guardOrNull(role, ResourceType.Order, "*", Action.Read) {
-            orderDao.getById(id)
+            if (delegateForUserId.isNullOrBlank()) {
+                orderDao.getByIdForActor(id, actorId)
+            } else {
+                orderDao.getByIdForOwnerOrDelegate(id, actorId, delegateForUserId)
+            }
         }
     }
 }

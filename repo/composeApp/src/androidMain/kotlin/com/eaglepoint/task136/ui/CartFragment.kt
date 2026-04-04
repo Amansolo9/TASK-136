@@ -28,16 +28,40 @@ class CartFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         val role = authVm.state.value.role ?: Role.Viewer
         val actorId = authVm.state.value.principal?.userId.orEmpty()
+        val delegateForUserId = authVm.state.value.principal?.delegateForUserId
 
         view.findViewById<MaterialButton>(R.id.backButton).setOnClickListener {
             (activity as? NavigationHost)?.navigateBack()
         }
         view.findViewById<MaterialButton>(R.id.addItemBtn).setOnClickListener {
-            financeVm.addDemoItem(role, actorId)
+            financeVm.addCartItem(
+                role = role,
+                actorId = actorId,
+                delegateForUserId = delegateForUserId,
+                resourceId = "res-1",
+                label = "Service Package ${financeVm.state.value.cart.size + 1}",
+                quantity = 1,
+                unitPrice = 49.99,
+            )
+            authVm.touchSession()
+        }
+        view.findViewById<MaterialButton>(R.id.splitBtn).setOnClickListener {
+            financeVm.splitFirstItem(role, actorId, delegateForUserId)
+            authVm.touchSession()
+        }
+        view.findViewById<MaterialButton>(R.id.mergeBtn).setOnClickListener {
+            financeVm.mergeFirstTwoItems(role, actorId, delegateForUserId)
             authVm.touchSession()
         }
         view.findViewById<MaterialButton>(R.id.checkoutBtn).setOnClickListener {
-            financeVm.generateInvoice(role, actorId)
+            financeVm.generateInvoice(role, actorId, delegateForUserId)
+            authVm.touchSession()
+        }
+        view.findViewById<MaterialButton>(R.id.invoiceBtn).setOnClickListener {
+            val invoiceId = financeVm.state.value.invoices.lastOrNull()?.id
+            if (invoiceId != null) {
+                (activity as? NavigationHost)?.navigateToInvoiceDetail(invoiceId)
+            }
             authVm.touchSession()
         }
 

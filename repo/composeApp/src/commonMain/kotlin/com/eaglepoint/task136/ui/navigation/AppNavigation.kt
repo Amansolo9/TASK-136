@@ -12,6 +12,7 @@ sealed class Screen {
     data object Cart : Screen()
     data class InvoiceDetail(val invoiceId: String) : Screen()
     data class MeetingDetail(val meetingId: String) : Screen()
+    data object Admin : Screen()
 }
 
 class AppNavigator {
@@ -44,6 +45,7 @@ class AppNavigator {
             is Screen.OrderDetail, is Screen.Cart -> role != Role.Viewer
             is Screen.InvoiceDetail -> role == Role.Admin || role == Role.Supervisor || role == Role.Operator
             is Screen.MeetingDetail -> role != Role.Viewer
+            is Screen.Admin -> role == Role.Admin
         }
     }
 }

@@ -13,6 +13,7 @@ import com.eaglepoint.task136.shared.viewmodel.MeetingWorkflowViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderFinanceViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderWorkflowViewModel
 import com.eaglepoint.task136.shared.viewmodel.ResourceListViewModel
+import com.eaglepoint.task136.ui.AdminScreen
 import com.eaglepoint.task136.ui.CalendarScreen
 import com.eaglepoint.task136.ui.CartScreen
 import com.eaglepoint.task136.ui.InvoiceDetailScreen
@@ -94,6 +95,7 @@ fun App(
                 is Screen.Calendar -> {
                     CalendarScreen(
                         orderWorkflowViewModel = orderWorkflowViewModel,
+                        resourceListViewModel = resourceListViewModel,
                         roleLabel = role,
                         actorId = actor,
                         onBack = { navigator.goBack() },
@@ -122,6 +124,7 @@ fun App(
                             orderFinanceViewModel = orderFinanceViewModel,
                             roleLabel = role,
                             actorId = actor,
+                            delegateForUserId = delegate,
                             onBack = { navigator.goBack() },
                             onActivity = authViewModel::touchSession,
                         )
@@ -150,6 +153,17 @@ fun App(
                             meetingWorkflowViewModel = meetingWorkflowViewModel,
                             roleLabel = role,
                             actorId = actor,
+                            onBack = { navigator.goBack() },
+                            onActivity = authViewModel::touchSession,
+                        )
+                    }
+                }
+                is Screen.Admin -> {
+                    if (!AppNavigator.isScreenAllowed(screen, roleEnum)) {
+                        navigator.resetToDashboard()
+                    } else {
+                        AdminScreen(
+                            resourceListViewModel = resourceListViewModel,
                             onBack = { navigator.goBack() },
                             onActivity = authViewModel::touchSession,
                         )

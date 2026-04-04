@@ -1,6 +1,7 @@
 package com.eaglepoint.task136.shared.db
 
 import androidx.room.RoomDatabase
+import com.eaglepoint.task136.shared.logging.AppLogger
 
 /**
  * Desktop encryption is not yet implemented.
@@ -12,7 +13,7 @@ import androidx.room.RoomDatabase
  */
 actual object EncryptedRoomConfig {
     actual fun apply(builder: RoomDatabase.Builder<AppDatabase>, passphrase: ByteArray): RoomDatabase.Builder<AppDatabase> {
-        println("[SECURITY WARNING] Desktop database encryption not implemented. Data at rest is unprotected.")
+        AppLogger.w("EncryptedRoomConfig", "Desktop database encryption not implemented. Data at rest is unprotected.")
         return builder
     }
 }

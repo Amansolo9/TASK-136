@@ -18,6 +18,12 @@ interface OrderDao {
     @Query("SELECT * FROM orders WHERE id = :orderId")
     suspend fun getById(orderId: String): OrderEntity?
 
+    @Query("SELECT * FROM orders WHERE id = :orderId AND userId = :actorId")
+    suspend fun getByIdForActor(orderId: String, actorId: String): OrderEntity?
+
+    @Query("SELECT * FROM orders WHERE id = :orderId AND userId IN (:ownerId, :delegateOwnerId)")
+    suspend fun getByIdForOwnerOrDelegate(orderId: String, ownerId: String, delegateOwnerId: String): OrderEntity?
+
     @Query("SELECT * FROM orders WHERE id = :orderId")
     fun observeById(orderId: String): Flow<OrderEntity?>
 

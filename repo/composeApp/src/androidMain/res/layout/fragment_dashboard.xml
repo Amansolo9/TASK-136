@@ -141,6 +141,18 @@
         android:visibility="gone"
         android:layout_marginHorizontal="12dp" />
 
+    <!-- Empty state placeholder -->
+    <TextView
+        android:id="@+id/emptyStateText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="32dp"
+        android:text="No resources available"
+        android:textColor="#999999"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
     <!-- Resource list (RecyclerView + DiffUtil) -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/resourceRecyclerView"

@@ -41,7 +41,7 @@ class OrderDetailFragment : Fragment() {
             (activity as? NavigationHost)?.navigateBack()
         }
 
-        orderVm.loadOrderById(orderId)
+        orderVm.loadOrderById(orderId, actorId, authVm.state.value.principal?.delegateForUserId)
 
         view.findViewById<MaterialButton>(R.id.confirmBtn).setOnClickListener { orderVm.confirmLastOrder(role) }
         view.findViewById<MaterialButton>(R.id.shipBtn).setOnClickListener { orderVm.markAwaitingDelivery(role) }

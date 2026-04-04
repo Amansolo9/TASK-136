@@ -31,8 +31,8 @@ class OrderStateMachineTest {
     // ── Enum structure ────────────────────────────────────────────
 
     @Test
-    fun `OrderState has 14 states`() {
-        assertEquals(14, OrderState.entries.size)
+    fun `OrderState has 13 states`() {
+        assertEquals(13, OrderState.entries.size)
     }
 
     @Test
@@ -122,9 +122,9 @@ class OrderStateMachineTest {
     }
 
     @Test
-    fun `cancel fails from Expired`() = runBlocking {
+    fun `cancel fails from Refunded`() = runBlocking {
         val store = InMemoryOrderStore()
-        store.put(makeOrder("o1", "Expired"))
+        store.put(makeOrder("o1", "Refunded"))
         val sm = createSM(store)
 
         assertFalse(sm.cancel("o1"))
@@ -164,18 +164,18 @@ class OrderStateMachineTest {
     }
 
     @Test
-    fun `confirm fails from Expired`() = runBlocking {
+    fun `confirm fails from Cancelled`() = runBlocking {
         val store = InMemoryOrderStore()
-        store.put(makeOrder("o1", "Expired"))
+        store.put(makeOrder("o1", "Cancelled"))
         val sm = createSM(store)
 
         assertFalse(sm.confirm("o1"))
     }
 
     @Test
-    fun `confirm fails from Cancelled`() = runBlocking {
+    fun `confirm fails from Refunded`() = runBlocking {
         val store = InMemoryOrderStore()
-        store.put(makeOrder("o1", "Cancelled"))
+        store.put(makeOrder("o1", "Refunded"))
         val sm = createSM(store)
 
         assertFalse(sm.confirm("o1"))
@@ -374,7 +374,7 @@ class OrderStateMachineTest {
         val sm = createSM(store, resources, clockMillis = 200L)
 
         sm.expireStaleOrders()
-        assertEquals("Expired", store.get("o1")?.state)
+        assertEquals("Cancelled", store.get("o1")?.state)
         assertEquals(5, resources.get("r1")?.availableUnits)
     }
 
@@ -506,6 +506,9 @@ internal class InMemoryOrderStore {
         override suspend fun upsert(order: OrderEntity) { map[order.id] = order }
         override suspend fun update(order: OrderEntity) { map[order.id] = order }
         override suspend fun getById(orderId: String) = map[orderId]
+        override suspend fun getByIdForActor(orderId: String, actorId: String) = map[orderId]?.takeIf { it.userId == actorId }
+        override suspend fun getByIdForOwnerOrDelegate(orderId: String, ownerId: String, delegateOwnerId: String) =
+            map[orderId]?.takeIf { it.userId == ownerId || it.userId == delegateOwnerId }
         override fun observeById(orderId: String): Flow<OrderEntity?> = emptyFlow()
         override suspend fun getActiveByResource(resourceId: String) = map.values.filter { it.resourceId == resourceId && it.state != "Cancelled" }
         override suspend fun deleteById(orderId: String) { map.remove(orderId) }
@@ -534,6 +537,7 @@ internal class InMemoryResourceStore {
         override suspend fun getById(id: String) = map[id]
         override suspend fun page(limit: Int, offset: Int) = map.values.drop(offset).take(limit)
         override suspend fun countAll() = map.size
+        override suspend fun deleteById(id: String) { map.remove(id) }
     }
 }
 
@@ -557,6 +561,17 @@ internal class FakeOrderDatabase(
     }
     override fun userDao() = throw NotImplementedError()
     override fun cartDao() = throw NotImplementedError()
+    override fun walletDao() = object : com.eaglepoint.task136.shared.db.WalletDao {
+        override suspend fun upsert(wallet: com.eaglepoint.task136.shared.db.WalletEntity) = Unit
+        override suspend fun getByUserId(userId: String): com.eaglepoint.task136.shared.db.WalletEntity? = null
+        override suspend fun update(wallet: com.eaglepoint.task136.shared.db.WalletEntity) = Unit
+    }
+    override fun invoiceDao() = object : com.eaglepoint.task136.shared.db.InvoiceDao {
+        override suspend fun upsert(invoice: com.eaglepoint.task136.shared.db.InvoiceEntity) = Unit
+        override suspend fun getByOwner(ownerId: String) = emptyList<com.eaglepoint.task136.shared.db.InvoiceEntity>()
+        override suspend fun getById(id: String): com.eaglepoint.task136.shared.db.InvoiceEntity? = null
+        override suspend fun getRecent(limit: Int) = emptyList<com.eaglepoint.task136.shared.db.InvoiceEntity>()
+    }
     override fun deviceBindingDao() = throw NotImplementedError()
     override fun governanceDao() = throw NotImplementedError()
     override fun meetingDao() = throw NotImplementedError()

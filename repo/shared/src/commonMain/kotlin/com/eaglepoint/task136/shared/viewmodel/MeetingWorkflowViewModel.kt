@@ -6,10 +6,14 @@ import com.eaglepoint.task136.shared.db.MeetingEntity
 import com.eaglepoint.task136.shared.orders.BookingUseCase
 import com.eaglepoint.task136.shared.orders.TimeWindow
 import com.eaglepoint.task136.shared.platform.NotificationGateway
+import com.eaglepoint.task136.shared.platform.getDeviceFingerprint
+import com.eaglepoint.task136.shared.rbac.AbacPolicyEvaluator
+import com.eaglepoint.task136.shared.rbac.AccessContext
 import com.eaglepoint.task136.shared.rbac.Action
 import com.eaglepoint.task136.shared.rbac.PermissionEvaluator
 import com.eaglepoint.task136.shared.rbac.ResourceType
 import com.eaglepoint.task136.shared.rbac.Role
+import com.eaglepoint.task136.shared.security.DeviceBindingService
 import com.eaglepoint.task136.shared.services.ValidationService
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -52,10 +56,13 @@ data class MeetingWorkflowState(
 class MeetingWorkflowViewModel(
     private val validationService: ValidationService,
     private val permissionEvaluator: PermissionEvaluator,
+    private val abacPolicyEvaluator: AbacPolicyEvaluator,
+    private val deviceBindingService: DeviceBindingService,
     private val meetingDao: MeetingDao,
     private val notificationGateway: NotificationGateway,
     private val bookingUseCase: BookingUseCase,
     private val clock: Clock,
+    private val deviceFingerprint: String = getDeviceFingerprint(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -66,16 +73,20 @@ class MeetingWorkflowViewModel(
         start: Instant = clock.now().plus(20.minutes),
         agenda: String = "",
         organizerId: String = "",
+        actorId: String = organizerId,
         resourceId: String = "res-1",
     ) {
-        val meetingId = "mtg-${clock.now().toEpochMilliseconds()}"
+        val meetingId = "mtg-${clock.now().toEpochMilliseconds()}-${(1000..9999).random()}"
         scope.launch(ioDispatcher) {
             // Check for time conflicts
             val endTime = start.plus(30.minutes)
             val candidate = TimeWindow(start, endTime)
-            val existingMeetings = meetingDao.page(100)
+            val existingMeetings = meetingDao.pageByResource(
+                resourceId = resourceId,
+                rangeStart = start.toEpochMilliseconds() - 86_400_000L,
+                rangeEnd = endTime.toEpochMilliseconds() + 86_400_000L,
+            )
             val existingWindows = existingMeetings
-                .filter { it.status != MeetingStatus.Denied.name }
                 .map { TimeWindow(
                     kotlinx.datetime.Instant.fromEpochMilliseconds(it.startTime),
                     kotlinx.datetime.Instant.fromEpochMilliseconds(it.endTime),
@@ -97,30 +108,87 @@ class MeetingWorkflowViewModel(
                 MeetingEntity(
                     id = meetingId,
                     organizerId = organizerId,
+                    resourceId = resourceId,
                     title = "Meeting",
                     startTime = start.toEpochMilliseconds(),
                     endTime = endTime.toEpochMilliseconds(),
                     status = MeetingStatus.PendingApproval.name,
                     agenda = agenda,
+                    note = if (actorId != organizerId) "createdBy:$actorId" else null,
                 ),
             )
-            notificationGateway.scheduleInvoiceReady("mtg-submitted-$meetingId", 0.0)
+            notificationGateway.scheduleMeetingNotification(meetingId, "Meeting submitted, awaiting approval")
         }
     }
 
-    fun addAttendee(name: String) {
+    fun addAttendee(name: String, role: Role, actorId: String, ownerId: String = actorId, isDelegate: Boolean = false) {
         val meetingId = _state.value.meetingId ?: return
-        val attendeeId = "att-${clock.now().toEpochMilliseconds()}"
-        val info = AttendeeInfo(id = attendeeId, name = name)
-        _state.value = _state.value.copy(attendees = _state.value.attendees + info)
         scope.launch(ioDispatcher) {
+            val trusted = deviceBindingService.isDeviceTrusted(actorId, deviceFingerprint)
+            val context = AccessContext(
+                requesterId = actorId,
+                ownerId = ownerId,
+                isDelegate = isDelegate,
+                deviceTrusted = trusted,
+            )
+            if (!abacPolicyEvaluator.canManageAttendee(role, context)) {
+                _state.value = _state.value.copy(note = "Attendee access denied")
+                return@launch
+            }
+
+            val existing = meetingDao.getById(meetingId) ?: run {
+                _state.value = _state.value.copy(note = "Meeting not found")
+                return@launch
+            }
+
+            val attendeeId = "att-${clock.now().toEpochMilliseconds()}"
+            val info = AttendeeInfo(id = attendeeId, name = name)
+            _state.value = _state.value.copy(attendees = _state.value.attendees + info, note = null)
             meetingDao.upsertAttendee(
                 MeetingAttendeeEntity(
                     id = attendeeId,
-                    meetingId = meetingId,
+                    meetingId = existing.id,
                     userId = name,
                     displayName = name,
                 ),
+            )
+        }
+    }
+
+    fun loadMeetingDetail(meetingId: String, role: Role, actorId: String, ownerId: String = actorId, isDelegate: Boolean = false) {
+        scope.launch(ioDispatcher) {
+            val meeting = when (role) {
+                Role.Admin, Role.Supervisor -> meetingDao.getById(meetingId)
+                else -> meetingDao.getByIdForOrganizer(meetingId, actorId)
+            }
+            if (meeting == null) {
+                _state.value = _state.value.copy(note = "Meeting not found or access denied")
+                return@launch
+            }
+
+            val trusted = deviceBindingService.isDeviceTrusted(actorId, deviceFingerprint)
+            val context = AccessContext(
+                requesterId = actorId,
+                ownerId = ownerId,
+                isDelegate = isDelegate,
+                deviceTrusted = trusted,
+            )
+            val canSeeAttendees = abacPolicyEvaluator.canReadAttendee(role, context)
+            val attendees = if (canSeeAttendees) {
+                meetingDao.getAttendees(meetingId).map {
+                    AttendeeInfo(id = it.id, name = it.displayName, rsvp = it.rsvpStatus)
+                }
+            } else {
+                emptyList()
+            }
+
+            _state.value = MeetingWorkflowState(
+                status = MeetingStatus.valueOf(meeting.status),
+                meetingId = meeting.id,
+                meetingStart = Instant.fromEpochMilliseconds(meeting.startTime),
+                agenda = meeting.agenda,
+                attendees = attendees,
+                note = if (canSeeAttendees) null else "Attendee list restricted to Supervisor/Admin",
             )
         }
     }
@@ -135,7 +203,7 @@ class MeetingWorkflowViewModel(
     }
 
     fun approve(role: Role) {
-        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Approve)) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Meeting, "*", Action.Approve)) {
             _state.value = _state.value.copy(note = "Approval denied for role")
             return
         }
@@ -146,15 +214,12 @@ class MeetingWorkflowViewModel(
         scheduleAutoNoShow()
         scope.launch(ioDispatcher) {
             val meetingId = current.meetingId ?: return@launch
-            notificationGateway.scheduleInvoiceReady(
-                "mtg-approved-$meetingId",
-                0.0,
-            )
+            notificationGateway.scheduleMeetingNotification(meetingId, "Meeting approved")
         }
     }
 
     fun deny(role: Role) {
-        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Approve)) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Meeting, "*", Action.Approve)) {
             _state.value = _state.value.copy(note = "Denial denied for role")
             return
         }
@@ -165,7 +230,7 @@ class MeetingWorkflowViewModel(
     }
 
     fun checkIn(role: Role) {
-        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Write)) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Meeting, "*", Action.Write)) {
             _state.value = _state.value.copy(note = "Check-in denied for role")
             return
         }
@@ -183,7 +248,7 @@ class MeetingWorkflowViewModel(
     }
 
     fun markNoShowIfDue(role: Role, now: Instant = clock.now()) {
-        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Approve)) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Meeting, "*", Action.Approve)) {
             _state.value = _state.value.copy(note = "No-show action denied for role")
             return
         }

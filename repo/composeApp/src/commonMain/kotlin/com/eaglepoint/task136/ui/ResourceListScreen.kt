@@ -203,6 +203,19 @@ fun ResourceListScreen(
                     ) {
                         Text("Cart", fontSize = 12.sp)
                     }
+                    if (roleLabel == "Admin") {
+                        FilledTonalButton(
+                            onClick = { onNavigate(Screen.Admin) },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = Coral.copy(alpha = 0.12f),
+                                contentColor = Coral,
+                            ),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Admin", fontSize = 12.sp)
+                        }
+                    }
                     if (delegateForUserId != null) {
                         Box(
                             modifier = Modifier
@@ -279,7 +292,16 @@ fun ResourceListScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ActionChip("Create", Purple, canManage) {
-                            orderWorkflowViewModel.createPendingTenderDemo(actorRole, actorId, delegateForUserId)
+                            val selectedResource = state.resources.firstOrNull()
+                            if (selectedResource != null) {
+                                orderWorkflowViewModel.createPendingTender(
+                                    role = actorRole,
+                                    actorId = actorId,
+                                    resourceId = selectedResource.id,
+                                    quantity = 1,
+                                    delegateForUserId = delegateForUserId,
+                                )
+                            }
                             onActivity()
                         }
                         ActionChip("Confirm", Green, canManage) {
@@ -388,11 +410,20 @@ fun ResourceListScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ActionChip("Submit", Green, canManage) {
-                            meetingWorkflowViewModel.submitMeeting(organizerId = actorId)
+                            meetingWorkflowViewModel.submitMeeting(
+                                organizerId = delegateForUserId ?: actorId,
+                                actorId = actorId,
+                            )
                             onActivity()
                         }
                         ActionChip("Add Attendee", Blue, canManage) {
-                            meetingWorkflowViewModel.addAttendee("User-${(1..99).random()}")
+                            meetingWorkflowViewModel.addAttendee(
+                                "User-${(1..99).random()}",
+                                actorRole,
+                                actorId,
+                                delegateForUserId ?: actorId,
+                                delegateForUserId != null,
+                            )
                             onActivity()
                         }
                         ActionChip("Approve", Purple, canApprove) {
@@ -434,15 +465,26 @@ fun ResourceListScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ActionChip("Add Item", Green, canManage) {
-                            orderFinanceViewModel.addDemoItem(actorRole, actorId)
+                            val selectedResource = state.resources.firstOrNull()
+                            if (selectedResource != null) {
+                                orderFinanceViewModel.addCartItem(
+                                    role = actorRole,
+                                    actorId = actorId,
+                                    delegateForUserId = delegateForUserId,
+                                    resourceId = selectedResource.id,
+                                    label = selectedResource.name,
+                                    quantity = 1,
+                                    unitPrice = selectedResource.unitPrice,
+                                )
+                            }
                             onActivity()
                         }
                         ActionChip("Merge", Blue, canManage) {
-                            orderFinanceViewModel.mergeFirstTwoItems(actorRole)
+                            orderFinanceViewModel.mergeFirstTwoItems(actorRole, actorId)
                             onActivity()
                         }
                         ActionChip("Split", Amber, canManage) {
-                            orderFinanceViewModel.splitFirstItem(actorRole)
+                            orderFinanceViewModel.splitFirstItem(actorRole, actorId)
                             onActivity()
                         }
                     }
@@ -459,7 +501,7 @@ fun ResourceListScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ActionChip("Generate Invoice", Purple, canManage) {
-                            orderFinanceViewModel.generateInvoice(role = actorRole, actorId = actorId)
+                            orderFinanceViewModel.generateInvoice(role = actorRole, actorId = actorId, delegateForUserId = delegateForUserId)
                             onActivity()
                         }
                         ActionChip("Refund Latest", Coral, canManage) {

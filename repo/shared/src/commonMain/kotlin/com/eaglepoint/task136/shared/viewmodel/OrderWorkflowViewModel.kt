@@ -3,7 +3,6 @@ package com.eaglepoint.task136.shared.viewmodel
 import com.eaglepoint.task136.shared.db.OrderDao
 import com.eaglepoint.task136.shared.db.OrderEntity
 import com.eaglepoint.task136.shared.db.ResourceDao
-import com.eaglepoint.task136.shared.db.ResourceEntity
 import com.eaglepoint.task136.shared.orders.BookingUseCase
 import com.eaglepoint.task136.shared.orders.OrderState
 import com.eaglepoint.task136.shared.orders.OrderStateMachine
@@ -54,9 +53,11 @@ class OrderWorkflowViewModel(
         return delegateForUserId ?: actorId
     }
 
-    fun createPendingTenderDemo(
+    fun createPendingTender(
         role: Role,
         actorId: String,
+        resourceId: String,
+        quantity: Int,
         delegateForUserId: String? = null,
         paymentMethod: PaymentMethod = PaymentMethod.Cash,
     ) {
@@ -65,11 +66,19 @@ class OrderWorkflowViewModel(
             return
         }
         scope.launch(Dispatchers.IO) {
-            ensureDemoResource()
+            val resource = resourceDao.getById(resourceId)
+            if (resource == null) {
+                _state.value = _state.value.copy(lastOrderState = "Resource not found")
+                return@launch
+            }
+            if (quantity <= 0) {
+                _state.value = _state.value.copy(lastOrderState = "Quantity must be at least 1")
+                return@launch
+            }
             val effectiveUserId = resolveOrderUserId(actorId, delegateForUserId)
-            val orderId = "ord-${clock.now().toEpochMilliseconds()}"
+            val orderId = "ord-${clock.now().toEpochMilliseconds()}-${(1000..9999).random()}"
             val now = clock.now().toEpochMilliseconds()
-            val totalPrice = 25.50
+            val totalPrice = resource.unitPrice * quantity
             val priceError = validationService.validatePrice(totalPrice)
             if (priceError != null) {
                 _state.value = _state.value.copy(lastOrderState = priceError)
@@ -78,15 +87,16 @@ class OrderWorkflowViewModel(
             val order = OrderEntity(
                 id = orderId,
                 userId = effectiveUserId,
-                resourceId = "res-1",
+                resourceId = resource.id,
                 state = OrderState.Draft.name,
                 startTime = now,
                 endTime = clock.now().plus(30.minutes).toEpochMilliseconds(),
                 expiresAt = null,
-                quantity = 1,
+                quantity = quantity,
                 totalPrice = totalPrice,
                 createdAt = now,
                 paymentMethod = paymentMethod.name,
+                notes = if (effectiveUserId != actorId) "createdBy:$actorId" else null,
             )
             orderDao.upsert(order)
             val transitionError = stateMachine.transitionToPendingTender(orderId, role)
@@ -95,6 +105,29 @@ class OrderWorkflowViewModel(
                 return@launch
             }
             _state.value = _state.value.copy(lastOrderId = orderId, lastOrderState = OrderState.PendingTender.name)
+        }
+    }
+
+    internal fun createPendingTenderDemo(
+        role: Role,
+        actorId: String,
+        delegateForUserId: String? = null,
+        paymentMethod: PaymentMethod = PaymentMethod.Cash,
+    ) {
+        scope.launch(Dispatchers.IO) {
+            val firstResource = resourceDao.page(limit = 1, offset = 0).firstOrNull()
+            if (firstResource == null) {
+                _state.value = _state.value.copy(lastOrderState = "No resources available")
+                return@launch
+            }
+            createPendingTender(
+                role = role,
+                actorId = actorId,
+                resourceId = firstResource.id,
+                quantity = 1,
+                delegateForUserId = delegateForUserId,
+                paymentMethod = paymentMethod,
+            )
         }
     }
 
@@ -224,15 +257,14 @@ class OrderWorkflowViewModel(
         }
     }
 
-    fun suggestSlots(role: Role) {
+    fun suggestSlots(role: Role, resourceId: String) {
         if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Read)) {
             _state.value = _state.value.copy(suggestedSlots = emptyList())
             return
         }
         scope.launch(Dispatchers.IO) {
-            ensureDemoResource()
             val slots = bookingUseCase.findThreeAvailableSlots(
-                resourceId = "res-1",
+                resourceId = resourceId,
                 duration = 30.minutes,
             )
             val zone = TimeZone.currentSystemDefault()
@@ -245,18 +277,15 @@ class OrderWorkflowViewModel(
         }
     }
 
-    private suspend fun ensureDemoResource() {
-        if (resourceDao.getById("res-1") != null) return
-        resourceDao.upsert(
-            ResourceEntity(
-                id = "res-1",
-                name = "Premium Hall",
-                category = "Operations",
-                availableUnits = 4,
-                unitPrice = 25.50,
-                allergens = "none",
-            ),
-        )
+    fun suggestSlots(role: Role) {
+        scope.launch(Dispatchers.IO) {
+            val firstResource = resourceDao.page(limit = 1, offset = 0).firstOrNull()
+            if (firstResource == null) {
+                _state.value = _state.value.copy(suggestedSlots = emptyList(), error = "No resources available")
+                return@launch
+            }
+            suggestSlots(role, firstResource.id)
+        }
     }
 
     fun loadOrderById(orderId: String) {
@@ -267,6 +296,63 @@ class OrderWorkflowViewModel(
                     lastOrderId = order.id,
                     lastOrderState = order.state,
                 )
+            }
+        }
+    }
+
+    fun loadOrderById(orderId: String, actorId: String, delegateForUserId: String? = null) {
+        scope.launch(Dispatchers.IO) {
+            val order = if (delegateForUserId.isNullOrBlank()) {
+                orderDao.getByIdForActor(orderId, actorId)
+            } else {
+                orderDao.getByIdForOwnerOrDelegate(orderId, actorId, delegateForUserId)
+            }
+            if (order != null) {
+                _state.value = _state.value.copy(
+                    lastOrderId = order.id,
+                    lastOrderState = order.state,
+                    error = null,
+                )
+            } else {
+                _state.value = _state.value.copy(error = "Order not found or access denied")
+            }
+        }
+    }
+
+    fun splitOrder(role: Role, splitQuantity: Int = 1) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Write)) {
+            _state.value = _state.value.copy(lastOrderState = "Denied")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val orderId = _state.value.lastOrderId ?: return@launch
+            val result = stateMachine.splitOrder(orderId, splitQuantity)
+            if (result != null) {
+                _state.value = _state.value.copy(
+                    lastOrderId = result.first,
+                    lastOrderState = "Split into ${result.first} and ${result.second}",
+                )
+            } else {
+                _state.value = _state.value.copy(lastOrderState = "Split not allowed")
+            }
+        }
+    }
+
+    fun mergeOrders(role: Role, otherOrderId: String) {
+        if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Write)) {
+            _state.value = _state.value.copy(lastOrderState = "Denied")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val orderId = _state.value.lastOrderId ?: return@launch
+            val mergedId = stateMachine.mergeOrders(orderId, otherOrderId)
+            if (mergedId != null) {
+                _state.value = _state.value.copy(
+                    lastOrderId = mergedId,
+                    lastOrderState = "Merged into $mergedId",
+                )
+            } else {
+                _state.value = _state.value.copy(lastOrderState = "Merge not allowed")
             }
         }
     }

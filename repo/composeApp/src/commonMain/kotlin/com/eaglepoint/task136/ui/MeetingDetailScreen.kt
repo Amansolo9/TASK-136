@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -56,6 +57,10 @@ fun MeetingDetailScreen(
     val actorRole = Role.entries.firstOrNull { it.name == roleLabel } ?: Role.Viewer
     val canManage = roleLabel != "Viewer"
     val canApprove = roleLabel == "Supervisor" || roleLabel == "Admin"
+
+    LaunchedEffect(meetingId, roleLabel, actorId) {
+        meetingWorkflowViewModel.loadMeetingDetail(meetingId, actorRole, actorId)
+    }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Box(
@@ -119,7 +124,7 @@ fun MeetingDetailScreen(
             item {
                 Spacer(Modifier.height(16.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { meetingWorkflowViewModel.addAttendee("User-${(1..99).random()}"); onActivity() },
+                    FilledTonalButton(onClick = { meetingWorkflowViewModel.addAttendee("User-${(1..99).random()}", actorRole, actorId); onActivity() },
                         enabled = canManage, shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = Blue.copy(alpha = 0.12f), contentColor = Blue)) {
                         Text("Add Attendee", fontSize = 12.sp)

@@ -1,5 +1,6 @@
 package com.eaglepoint.task136.shared.db
 
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
@@ -16,11 +17,18 @@ import androidx.room.RoomDatabase
         DiscrepancyTicketEntity::class,
         MeetingEntity::class,
         MeetingAttendeeEntity::class,
+        WalletEntity::class,
         CourseEntity::class,
         EnrollmentEntity::class,
+        InvoiceEntity::class,
     ],
-    version = 5,
+    version = 8,
     exportSchema = true,
+    autoMigrations = [
+        AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 7, to = 8),
+    ],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -31,5 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun deviceBindingDao(): DeviceBindingDao
     abstract fun governanceDao(): GovernanceDao
     abstract fun meetingDao(): MeetingDao
+    abstract fun walletDao(): WalletDao
+    abstract fun invoiceDao(): InvoiceDao
     abstract fun learningDao(): LearningDao
 }

@@ -22,7 +22,7 @@ class LocalAuthService(
             DemoRecord("admin", "Admin1234!", "Avery Admin", Role.Admin),
             DemoRecord("supervisor", "Super1234!", "Sky Supervisor", Role.Supervisor),
             DemoRecord("operator", "Oper12345!", "Olive Operator", Role.Operator),
-            DemoRecord("viewer", "Viewer1234", "Vera Viewer", Role.Viewer),
+            DemoRecord("viewer", "Viewer1234!", "Vera Viewer", Role.Viewer),
             DemoRecord("companion", "Companion1!", "Casey Companion", Role.Companion, delegateFor = "operator"),
         )
         demos.forEach { demo ->

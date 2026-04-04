@@ -31,6 +31,17 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/emptyCartText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:padding="32dp"
+        android:text="Your cart is empty"
+        android:textColor="#999999"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/cartRecyclerView"
         android:layout_width="match_parent"
@@ -42,8 +53,13 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:padding="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
         <com.google.android.material.button.MaterialButton
             android:id="@+id/addItemBtn"
             android:layout_width="wrap_content"
@@ -51,14 +67,45 @@
             android:text="Add Item"
             android:textAllCaps="false"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/splitBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Split"
+                android:textAllCaps="false"
+                android:layout_marginStart="8dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/mergeBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Merge"
+                android:textAllCaps="false"
+                android:layout_marginStart="8dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkoutBtn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Checkout"
             android:textAllCaps="false"
-            android:layout_marginStart="8dp"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/invoiceBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Latest Invoice"
+                android:textAllCaps="false"
+                android:layout_marginStart="8dp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
