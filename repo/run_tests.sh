@@ -17,9 +17,11 @@ if [ -d "/opt/android-sdk" ]; then
 
     $GRADLE :shared:testDebugUnitTest --no-daemon "$@"
 else
-    # Outside container – delegate to docker compose
-    # Use a separate GRADLE_USER_HOME to avoid cache-lock conflicts
-    # with the app service that may already be running.
+    # Stop the app service first — it shares /workspace and its Gradle
+    # locks conflict with the test run.
+    docker compose stop app 2>/dev/null || true
+
+    # Run tests inside the container with an isolated GRADLE_USER_HOME
     docker compose run --rm --no-deps \
         -e GRADLE_USER_HOME=/tmp/gradle-test \
         app bash -lc \
