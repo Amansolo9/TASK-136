@@ -45,6 +45,7 @@ class DeviceBindingService(
     suspend fun getDeviceCount(userId: String): Int {
         return deviceBindingDao.countByUserId(userId)
     }
+
 }
 
 sealed class DeviceBindingResult {

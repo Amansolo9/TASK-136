@@ -35,15 +35,19 @@ class InvoiceDetailFragment : Fragment() {
         val invoiceId = arguments?.getString("invoiceId").orEmpty()
         val role = authVm.state.value.role ?: Role.Viewer
         val actorId = authVm.state.value.principal?.userId.orEmpty()
+        val delegateForUserId = authVm.state.value.principal?.delegateForUserId
 
         view.findViewById<TextView>(R.id.invoiceIdText).text = invoiceId
         view.findViewById<MaterialButton>(R.id.backButton).setOnClickListener {
             (activity as? NavigationHost)?.navigateBack()
         }
         view.findViewById<MaterialButton>(R.id.refundBtn).setOnClickListener {
-            financeVm.refundLatest(role, actorId)
+            financeVm.refundInvoice(invoiceId, role, actorId, delegateForUserId)
             authVm.touchSession()
         }
+
+        // Load invoice from persistence
+        financeVm.loadInvoiceById(invoiceId, role, actorId, delegateForUserId)
 
         viewLifecycleOwner.lifecycleScope.launch {
             financeVm.state.collectLatest { state ->

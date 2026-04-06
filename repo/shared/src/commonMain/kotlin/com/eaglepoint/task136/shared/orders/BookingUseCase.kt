@@ -1,6 +1,6 @@
 package com.eaglepoint.task136.shared.orders
 
-import com.eaglepoint.task136.shared.db.OrderDao
+import com.eaglepoint.task136.shared.db.MeetingDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
@@ -15,7 +15,7 @@ data class TimeWindow(
 )
 
 class BookingUseCase(
-    private val orderDao: OrderDao,
+    private val meetingDao: MeetingDao,
     private val clock: Clock,
     private val buffer: Duration = 10.minutes,
 ) {
@@ -24,15 +24,19 @@ class BookingUseCase(
         duration: Duration,
         anchor: Instant = clock.now(),
     ): List<TimeWindow> = withContext(Dispatchers.IO) {
-        val existing = orderDao.getActiveByResource(resourceId)
-            .map { TimeWindow(Instant.fromEpochMilliseconds(it.startTime), Instant.fromEpochMilliseconds(it.endTime)) }
+        val horizonEnd = anchor.plus(14.days)
+        val existing = meetingDao.pageByResource(
+            resourceId = resourceId,
+            rangeStart = anchor.toEpochMilliseconds(),
+            rangeEnd = horizonEnd.toEpochMilliseconds(),
+            limit = 500,
+        ).map { TimeWindow(Instant.fromEpochMilliseconds(it.startTime), Instant.fromEpochMilliseconds(it.endTime)) }
             .sortedBy { it.start }
 
-        val horizonEnd = anchor.plus(14.days)
         val results = mutableListOf<TimeWindow>()
         var cursor = anchor
 
-        while (cursor < horizonEnd && results.size < 3) {
+        while (cursor.plus(duration) <= horizonEnd && results.size < 3) {
             val candidate = TimeWindow(cursor, cursor.plus(duration))
             if (!overlaps(existing, candidate)) {
                 results += candidate

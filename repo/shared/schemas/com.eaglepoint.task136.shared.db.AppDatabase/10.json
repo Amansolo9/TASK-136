@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 9,
-    "identityHash": "3c02e774ba612e249a5c2e1b8ad0b674",
+    "version": 10,
+    "identityHash": "39edf6b24bd98ac9ad723b7c964c6c4a",
     "entities": [
       {
         "tableName": "users",
@@ -640,7 +640,7 @@
       },
       {
         "tableName": "meetings",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `organizerId` TEXT NOT NULL, `resourceId` TEXT NOT NULL, `title` TEXT NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER NOT NULL, `status` TEXT NOT NULL, `agenda` TEXT NOT NULL, `attachmentPath` TEXT, `note` TEXT, `requireCheckIn` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `organizerId` TEXT NOT NULL, `resourceId` TEXT NOT NULL, `title` TEXT NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER NOT NULL, `status` TEXT NOT NULL, `agenda` TEXT NOT NULL, `attachmentPath` TEXT, `note` TEXT, `requireCheckIn` INTEGER NOT NULL DEFAULT 1, `checkInDueAt` INTEGER, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -706,6 +706,11 @@
             "affinity": "INTEGER",
             "notNull": true,
             "defaultValue": "1"
+          },
+          {
+            "fieldPath": "checkInDueAt",
+            "columnName": "checkInDueAt",
+            "affinity": "INTEGER"
           }
         ],
         "primaryKey": {
@@ -1060,7 +1065,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3c02e774ba612e249a5c2e1b8ad0b674')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '39edf6b24bd98ac9ad723b7c964c6c4a')"
     ]
   }
 }

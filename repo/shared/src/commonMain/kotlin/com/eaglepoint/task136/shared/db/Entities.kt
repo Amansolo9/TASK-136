@@ -163,6 +163,7 @@ data class MeetingEntity(
     val note: String? = null,
     @androidx.room.ColumnInfo(defaultValue = "1")
     val requireCheckIn: Boolean = true,
+    val checkInDueAt: Long? = null,
 )
 
 @Entity(
@@ -233,5 +234,8 @@ data class InvoiceEntity(
     val orderId: String? = null,
     val ownerId: String,
     val actorId: String,
+    @androidx.room.ColumnInfo(defaultValue = "Cash")
+    val paymentMethod: String = "Cash",
+    val externalTenderDetails: String? = null,
     val createdAt: Long,
 )

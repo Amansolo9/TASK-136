@@ -6,6 +6,7 @@ import com.eaglepoint.task136.shared.db.AppDatabase
 import com.eaglepoint.task136.shared.governance.ReconciliationService
 import com.eaglepoint.task136.shared.governance.RuleHitObserver
 import com.eaglepoint.task136.shared.orders.OrderStateMachine
+import com.eaglepoint.task136.shared.services.MeetingNoShowReconciliationService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,5 +41,11 @@ fun initKoinIfNeeded(database: AppDatabase, isDebug: Boolean = false) {
     val stateMachine = koin.get<OrderStateMachine>()
     appScope.launch {
         stateMachine.expireStaleOrders()
+    }
+
+    // M5: Reconcile overdue approved meetings to NoShow on startup
+    val meetingNoShowReconciliation = koin.get<MeetingNoShowReconciliationService>()
+    appScope.launch {
+        meetingNoShowReconciliation.reconcileOverdueApprovedMeetings()
     }
 }

@@ -58,7 +58,7 @@ fun OrderDetailScreen(
     val canManage = roleLabel != "Viewer"
 
     LaunchedEffect(orderId) {
-        orderWorkflowViewModel.loadOrderById(orderId)
+        orderWorkflowViewModel.loadOrderById(orderId, actorRole, actorId)
     }
 
     Column(

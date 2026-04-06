@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -54,6 +55,10 @@ fun InvoiceDetailScreen(
     val financeState by orderFinanceViewModel.state.collectAsState()
     val actorRole = Role.entries.firstOrNull { it.name == roleLabel } ?: Role.Viewer
     val invoice = financeState.invoices.firstOrNull { it.id == invoiceId }
+
+    LaunchedEffect(invoiceId) {
+        orderFinanceViewModel.loadInvoiceById(invoiceId, actorRole, actorId)
+    }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Box(
@@ -112,7 +117,7 @@ fun InvoiceDetailScreen(
                         }
                     } else {
                         FilledTonalButton(
-                            onClick = { orderFinanceViewModel.refundLatest(actorRole, actorId); onActivity() },
+                            onClick = { orderFinanceViewModel.refundInvoice(invoiceId, actorRole, actorId); onActivity() },
                             enabled = roleLabel == "Admin" || roleLabel == "Supervisor",
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(containerColor = Coral.copy(alpha = 0.12f), contentColor = Coral),

@@ -11,16 +11,15 @@ import com.eaglepoint.task136.R
 import com.eaglepoint.task136.shared.rbac.Role
 import com.eaglepoint.task136.shared.viewmodel.AuthViewModel
 import com.eaglepoint.task136.shared.viewmodel.MeetingWorkflowViewModel
-import com.eaglepoint.task136.shared.viewmodel.OrderWorkflowViewModel
 import com.eaglepoint.task136.shared.viewmodel.ResourceListViewModel
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
 
 class CalendarFragment : Fragment() {
     private val authVm: AuthViewModel by lazy { GlobalContext.get().get() }
-    private val orderVm: OrderWorkflowViewModel by lazy { GlobalContext.get().get() }
     private val meetingVm: MeetingWorkflowViewModel by lazy { GlobalContext.get().get() }
     private val resourceVm: ResourceListViewModel by lazy { GlobalContext.get().get() }
 
@@ -41,15 +40,30 @@ class CalendarFragment : Fragment() {
             (activity as? NavigationHost)?.navigateBack()
         }
         view.findViewById<MaterialButton>(R.id.suggestButton).setOnClickListener {
-            orderVm.suggestSlots(role)
+            val resourceId = resourceVm.state.value.resources.firstOrNull()?.id
+            if (resourceId != null) {
+                meetingVm.suggestSlots(role, resourceId)
+            } else {
+                meetingVm.suggestSlots(role, "res-1")
+            }
             authVm.touchSession()
         }
+        // Disable submit for viewer role
+        val canSubmitMeeting = role != Role.Viewer
+        view.findViewById<MaterialButton>(R.id.submitMeetingButton).isEnabled = canSubmitMeeting
+
         view.findViewById<MaterialButton>(R.id.submitMeetingButton).setOnClickListener {
             val resourceId = resourceVm.state.value.resources.firstOrNull()?.id ?: "res-1"
+            val agenda = view.findViewById<TextInputEditText>(R.id.agendaInput).text?.toString()?.trim().orEmpty()
+            val attendeesRaw = view.findViewById<TextInputEditText>(R.id.attendeesInput).text?.toString()?.trim().orEmpty()
+            val attendeeNames = attendeesRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
             meetingVm.submitMeeting(
                 organizerId = delegateForUserId ?: actorId,
                 actorId = actorId,
                 resourceId = resourceId,
+                role = role,
+                agenda = agenda,
+                attendeeNames = attendeeNames,
             )
             authVm.touchSession()
         }
@@ -62,7 +76,7 @@ class CalendarFragment : Fragment() {
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
-            orderVm.state.collectLatest { state ->
+            meetingVm.state.collectLatest { state ->
                 slotText.text = if (state.suggestedSlots.isEmpty()) {
                     "No suggested slots"
                 } else {

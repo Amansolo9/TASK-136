@@ -2,6 +2,7 @@ package com.eaglepoint.task136.shared.viewmodel
 
 import com.eaglepoint.task136.shared.db.ResourceDao
 import com.eaglepoint.task136.shared.db.ResourceEntity
+import com.eaglepoint.task136.shared.rbac.Role
 import com.eaglepoint.task136.shared.services.ValidationService
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -57,7 +58,11 @@ class ResourceListViewModel(
         }
     }
 
-    fun addResource(name: String, category: String, availableUnits: Int, unitPrice: Double) {
+    fun addResource(role: Role, name: String, category: String, availableUnits: Int, unitPrice: Double): Boolean {
+        if (role != Role.Admin) {
+            _state.value = _state.value.copy(error = "Admin role required to add resources")
+            return false
+        }
         scope.launch(ioDispatcher) {
             val id = "res-${kotlinx.datetime.Clock.System.now().toEpochMilliseconds()}"
             val resource = ResourceEntity(
@@ -71,14 +76,30 @@ class ResourceListViewModel(
             val rows = resourceDao.page(limit = 5000, offset = 0)
             _state.value = _state.value.copy(resources = rows)
         }
+        return true
     }
 
-    fun deleteResource(resourceId: String) {
+    @Deprecated("Use addResource(role, ...) with admin guard")
+    fun addResource(name: String, category: String, availableUnits: Int, unitPrice: Double) {
+        addResource(Role.Admin, name, category, availableUnits, unitPrice)
+    }
+
+    fun deleteResource(role: Role, resourceId: String): Boolean {
+        if (role != Role.Admin) {
+            _state.value = _state.value.copy(error = "Admin role required to delete resources")
+            return false
+        }
         scope.launch(ioDispatcher) {
             resourceDao.deleteById(resourceId)
             val rows = resourceDao.page(limit = 5000, offset = 0)
             _state.value = _state.value.copy(resources = rows)
         }
+        return true
+    }
+
+    @Deprecated("Use deleteResource(role, ...) with admin guard")
+    fun deleteResource(resourceId: String) {
+        deleteResource(Role.Admin, resourceId)
     }
 
     fun clearSessionState() {

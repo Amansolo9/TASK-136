@@ -21,6 +21,9 @@ interface MeetingDao {
     @Query("SELECT * FROM meetings WHERE id = :id AND organizerId = :actorId")
     suspend fun getByIdForOrganizer(id: String, actorId: String): MeetingEntity?
 
+    @Query("SELECT * FROM meetings WHERE id = :id AND organizerId IN (:actorId, :ownerId)")
+    suspend fun getByIdForOwnerOrDelegate(id: String, actorId: String, ownerId: String): MeetingEntity?
+
     @Query("SELECT * FROM meetings WHERE id = :id")
     fun observeById(id: String): Flow<MeetingEntity?>
 
@@ -32,6 +35,9 @@ interface MeetingDao {
 
     @Query("SELECT * FROM meetings WHERE resourceId = :resourceId AND status != :deniedStatus AND endTime >= :rangeStart AND startTime <= :rangeEnd ORDER BY startTime DESC LIMIT :limit")
     suspend fun pageByResource(resourceId: String, deniedStatus: String = "Denied", rangeStart: Long = 0L, rangeEnd: Long = Long.MAX_VALUE, limit: Int = 100): List<MeetingEntity>
+
+    @Query("SELECT * FROM meetings WHERE status = :approvedStatus AND requireCheckIn = 1 AND checkInDueAt IS NOT NULL AND checkInDueAt <= :nowMillis")
+    suspend fun getOverdueApprovedNoShowCandidates(nowMillis: Long, approvedStatus: String = "Approved"): List<MeetingEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAttendee(attendee: MeetingAttendeeEntity)

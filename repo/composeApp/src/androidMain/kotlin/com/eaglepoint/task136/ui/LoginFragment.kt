@@ -62,5 +62,6 @@ interface NavigationHost {
     fun navigateToInvoiceDetail(invoiceId: String)
     fun navigateToMeetingDetail(meetingId: String)
     fun navigateToLearning()
+    fun navigateToAdmin()
     fun navigateBack()
 }

@@ -3,10 +3,12 @@ package com.eaglepoint.task136.shared.viewmodel
 import com.eaglepoint.task136.shared.db.OrderDao
 import com.eaglepoint.task136.shared.db.OrderEntity
 import com.eaglepoint.task136.shared.db.ResourceDao
+import com.eaglepoint.task136.shared.governance.GovernanceAnalytics
 import com.eaglepoint.task136.shared.orders.BookingUseCase
 import com.eaglepoint.task136.shared.orders.OrderState
 import com.eaglepoint.task136.shared.orders.OrderStateMachine
 import com.eaglepoint.task136.shared.orders.PaymentMethod
+import com.eaglepoint.task136.shared.platform.NotificationGateway
 import com.eaglepoint.task136.shared.rbac.Action
 import com.eaglepoint.task136.shared.rbac.PermissionEvaluator
 import com.eaglepoint.task136.shared.rbac.ResourceType
@@ -40,6 +42,8 @@ class OrderWorkflowViewModel(
     private val permissionEvaluator: PermissionEvaluator,
     private val validationService: ValidationService,
     private val clock: Clock,
+    private val governanceAnalytics: GovernanceAnalytics? = null,
+    private val notificationGateway: NotificationGateway? = null,
 ) {
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _state = MutableStateFlow(OrderWorkflowState())
@@ -82,6 +86,13 @@ class OrderWorkflowViewModel(
             val priceError = validationService.validatePrice(totalPrice)
             if (priceError != null) {
                 _state.value = _state.value.copy(lastOrderState = priceError)
+                governanceAnalytics?.logPriceViolation(totalPrice)
+                return@launch
+            }
+            val allergenError = validationService.validateAllergens(resource)
+            if (allergenError != null) {
+                _state.value = _state.value.copy(lastOrderState = allergenError)
+                governanceAnalytics?.logAllergenBlock(resource.name)
                 return@launch
             }
             val order = OrderEntity(
@@ -142,6 +153,11 @@ class OrderWorkflowViewModel(
             _state.value = _state.value.copy(
                 lastOrderState = if (success) OrderState.Confirmed.name else "Confirm not allowed",
             )
+            if (success) {
+                try {
+                    notificationGateway?.scheduleOrderReminder(orderId, "Order $orderId confirmed and ready")
+                } catch (_: Exception) { /* quiet-hours may suppress */ }
+            }
         }
     }
 
@@ -288,24 +304,19 @@ class OrderWorkflowViewModel(
         }
     }
 
-    fun loadOrderById(orderId: String) {
+    fun loadOrderById(orderId: String, role: Role, actorId: String, delegateForUserId: String? = null) {
         scope.launch(Dispatchers.IO) {
-            val order = orderDao.getById(orderId)
-            if (order != null) {
-                _state.value = _state.value.copy(
-                    lastOrderId = order.id,
-                    lastOrderState = order.state,
-                )
+            if (!permissionEvaluator.canAccess(role, ResourceType.Order, "*", Action.Read)) {
+                _state.value = _state.value.copy(error = "Order access denied for role")
+                return@launch
             }
-        }
-    }
-
-    fun loadOrderById(orderId: String, actorId: String, delegateForUserId: String? = null) {
-        scope.launch(Dispatchers.IO) {
-            val order = if (delegateForUserId.isNullOrBlank()) {
-                orderDao.getByIdForActor(orderId, actorId)
-            } else {
-                orderDao.getByIdForOwnerOrDelegate(orderId, actorId, delegateForUserId)
+            val order = when (role) {
+                Role.Admin, Role.Supervisor -> orderDao.getById(orderId)
+                else -> if (delegateForUserId.isNullOrBlank()) {
+                    orderDao.getByIdForActor(orderId, actorId)
+                } else {
+                    orderDao.getByIdForOwnerOrDelegate(orderId, actorId, delegateForUserId)
+                }
             }
             if (order != null) {
                 _state.value = _state.value.copy(

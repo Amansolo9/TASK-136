@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.eaglepoint.task136.R
+import com.eaglepoint.task136.shared.rbac.Role
 import com.eaglepoint.task136.shared.viewmodel.AuthViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderFinanceViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderWorkflowViewModel
@@ -75,6 +76,12 @@ class DashboardFragment : Fragment() {
 
         val navLearning = view.findViewById<MaterialButton>(R.id.navLearning)
         navLearning.setOnClickListener { (activity as? NavigationHost)?.navigateToLearning() }
+
+        val navAdmin = view.findViewById<MaterialButton>(R.id.navAdmin)
+        navAdmin.setOnClickListener { (activity as? NavigationHost)?.navigateToAdmin() }
+        // Show admin button only for Admin role
+        val currentRole = authVm.state.value.role
+        navAdmin.visibility = if (currentRole == Role.Admin) View.VISIBLE else View.GONE
 
         resourceVm.loadPage(limit = 5000)
         authVm.touchSession()

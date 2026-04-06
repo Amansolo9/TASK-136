@@ -4,16 +4,21 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.eaglepoint.task136.R
+import com.eaglepoint.task136.media.ImageBitmapLruCache
+import com.eaglepoint.task136.media.ImageDownsampler
 import com.eaglepoint.task136.shared.rbac.Role
 import com.eaglepoint.task136.shared.viewmodel.AuthViewModel
 import com.eaglepoint.task136.shared.viewmodel.MeetingWorkflowViewModel
 import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.context.GlobalContext
 
 class MeetingDetailFragment : Fragment() {
@@ -21,10 +26,12 @@ class MeetingDetailFragment : Fragment() {
         fun newInstance(meetingId: String) = MeetingDetailFragment().apply {
             arguments = Bundle().apply { putString("meetingId", meetingId) }
         }
+        private val imageCache = ImageBitmapLruCache(maxBytes = 20 * 1024 * 1024)
     }
 
     private val meetingVm: MeetingWorkflowViewModel by lazy { GlobalContext.get().get() }
     private val authVm: AuthViewModel by lazy { GlobalContext.get().get() }
+    private val downsampler = ImageDownsampler()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_meeting_detail, container, false)
@@ -119,9 +126,35 @@ class MeetingDetailFragment : Fragment() {
                     attachmentText.visibility = View.VISIBLE
                     attachmentText.text = "Attachment: ${state.attachmentPath}"
                     removeBtn.visibility = View.VISIBLE
+                    // Load attachment image via downsampler + LRU cache pipeline
+                    loadAttachmentImage(state.attachmentPath!!)
                 } else {
                     attachmentText.visibility = View.GONE
                     removeBtn.visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    private fun loadAttachmentImage(path: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            // Check LRU cache first
+            val cached = imageCache.get(path)
+            if (cached != null) return@launch // Image already cached and ready
+
+            // Load and downsample off main thread
+            withContext(Dispatchers.IO) {
+                try {
+                    val file = java.io.File(path)
+                    if (file.exists()) {
+                        val bytes = file.readBytes()
+                        val bitmap = downsampler.downsample(bytes, maxWidth = 800, maxHeight = 600)
+                        if (bitmap != null) {
+                            imageCache.put(path, bitmap)
+                        }
+                    }
+                } catch (_: Exception) {
+                    // File may not exist yet for placeholder attachments
                 }
             }
         }

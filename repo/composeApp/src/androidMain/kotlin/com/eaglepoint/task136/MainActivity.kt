@@ -12,6 +12,7 @@ import com.eaglepoint.task136.security.SecurePassphraseProvider
 import com.eaglepoint.task136.shared.orders.OrderStateMachine
 import com.eaglepoint.task136.shared.platform.AndroidPlatformContext
 import com.eaglepoint.task136.shared.security.LocalAuthService
+import com.eaglepoint.task136.shared.services.MeetingNoShowReconciliationService
 import com.eaglepoint.task136.shared.viewmodel.AuthViewModel
 import com.eaglepoint.task136.shared.viewmodel.MeetingWorkflowViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderFinanceViewModel
@@ -21,6 +22,7 @@ import com.eaglepoint.task136.ui.CartFragment
 import com.eaglepoint.task136.ui.CalendarFragment
 import com.eaglepoint.task136.ui.DashboardFragment
 import com.eaglepoint.task136.ui.InvoiceDetailFragment
+import com.eaglepoint.task136.ui.AdminFragment
 import com.eaglepoint.task136.ui.LearningFragment
 import com.eaglepoint.task136.ui.LoginFragment
 import com.eaglepoint.task136.ui.MeetingDetailFragment
@@ -55,6 +57,7 @@ class MainActivity : AppCompatActivity(), NavigationHost {
         lifecycleScope.launch(Dispatchers.IO) {
             koin.get<LocalAuthService>().seedDemoAccountsIfNeeded()
             koin.get<OrderStateMachine>().expireStaleOrders()
+            koin.get<MeetingNoShowReconciliationService>().reconcileOverdueApprovedMeetings()
         }
 
         // Session expiry monitoring
@@ -83,6 +86,8 @@ class MainActivity : AppCompatActivity(), NavigationHost {
     }
 
     private fun showLogin() {
+        // Clear entire back stack so protected screens cannot be reached via back navigation
+        supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
         replaceFragment(LoginFragment(), addToBackStack = false)
     }
 
@@ -139,6 +144,12 @@ class MainActivity : AppCompatActivity(), NavigationHost {
         replaceFragment(LearningFragment())
     }
 
+    override fun navigateToAdmin() {
+        val authVm: AuthViewModel = GlobalContext.get().get()
+        if (authVm.state.value.role != com.eaglepoint.task136.shared.rbac.Role.Admin) return
+        replaceFragment(AdminFragment())
+    }
+
     override fun navigateBack() {
         if (!supportFragmentManager.popBackStackImmediate()) {
             showDashboard()
@@ -148,6 +159,9 @@ class MainActivity : AppCompatActivity(), NavigationHost {
     override fun onResume() {
         super.onResume()
         GlobalContext.get().get<AuthViewModel>().ensureSessionActive()
+        lifecycleScope.launch(Dispatchers.IO) {
+            GlobalContext.get().get<MeetingNoShowReconciliationService>().reconcileOverdueApprovedMeetings()
+        }
     }
 
     override fun onUserInteraction() {

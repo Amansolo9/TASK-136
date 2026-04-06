@@ -1,6 +1,10 @@
 package com.eaglepoint.task136.shared.di
 
+import com.eaglepoint.task136.shared.config.CanaryConfig
+import com.eaglepoint.task136.shared.config.CanaryEvaluator
+import com.eaglepoint.task136.shared.config.CanaryManifest
 import com.eaglepoint.task136.shared.governance.AnomalyNotifier
+import com.eaglepoint.task136.shared.governance.GovernanceAnalytics
 import com.eaglepoint.task136.shared.governance.ReconciliationService
 import com.eaglepoint.task136.shared.governance.RuleHitObserver
 import com.eaglepoint.task136.shared.logging.AppLogger
@@ -29,6 +33,7 @@ import com.eaglepoint.task136.shared.viewmodel.MeetingWorkflowViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderWorkflowViewModel
 import com.eaglepoint.task136.shared.viewmodel.OrderFinanceViewModel
 import com.eaglepoint.task136.shared.viewmodel.ResourceListViewModel
+import com.eaglepoint.task136.shared.services.MeetingNoShowReconciliationService
 import com.eaglepoint.task136.shared.services.ValidationService
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
@@ -44,7 +49,29 @@ fun sharedCoreModule(isDebug: Boolean = false): Module = module {
     single { AbacPolicyEvaluator() }
     single { PermissionEvaluator(defaultRules()) }
     single { ValidationService(clock = get()) }
+    single { MeetingNoShowReconciliationService(meetingDao = get(), clock = get()) }
     single { DeviceBindingService(deviceBindingDao = get(), clock = get()) }
+    single {
+        val manifest = CanaryManifest(
+            features = listOf(
+                CanaryConfig(
+                    featureId = "meeting_form_v2",
+                    targetVersion = 2,
+                    enabledRoles = setOf("Admin", "Supervisor"),
+                    enabledDeviceGroups = setOf("default", "beta"),
+                    rolloutPercentage = 100,
+                ),
+                CanaryConfig(
+                    featureId = "order_form_v2",
+                    targetVersion = 2,
+                    enabledRoles = setOf("Admin", "Supervisor", "Operator"),
+                    enabledDeviceGroups = setOf("beta"),
+                    rolloutPercentage = 50,
+                ),
+            ),
+        )
+        CanaryEvaluator(manifest)
+    }
     single {
         AuthViewModel(
             securityRepository = get(),
@@ -59,7 +86,7 @@ fun sharedCoreModule(isDebug: Boolean = false): Module = module {
     single<NotificationGateway> { PlatformNotificationGateway(scheduler = get(), clock = get(), timeZone = get()) }
     single<ReceiptGateway> { PlatformReceiptGateway(receiptService = get()) }
 
-    single { BookingUseCase(orderDao = get(), clock = get()) }
+    single { BookingUseCase(meetingDao = get(), clock = get()) }
     single { OrderStateMachine(database = get(), clock = get()) }
     single {
         OrderWorkflowViewModel(
@@ -70,6 +97,8 @@ fun sharedCoreModule(isDebug: Boolean = false): Module = module {
             permissionEvaluator = get(),
             validationService = get(),
             clock = get(),
+            governanceAnalytics = get(),
+            notificationGateway = get(),
         )
     }
     single {
@@ -82,6 +111,8 @@ fun sharedCoreModule(isDebug: Boolean = false): Module = module {
             notificationGateway = get(),
             bookingUseCase = get(),
             clock = get(),
+            timeZone = get(),
+            canaryEvaluator = get(),
         )
     }
     single {
@@ -92,11 +123,15 @@ fun sharedCoreModule(isDebug: Boolean = false): Module = module {
             deviceBindingService = get(),
             cartDao = get(),
             invoiceDao = get(),
+            orderDao = get(),
             stateMachine = get(),
             notificationGateway = get(),
             receiptGateway = get(),
+            governanceAnalytics = get(),
+            clock = get(),
         )
     }
+    single { GovernanceAnalytics(governanceDao = get(), clock = get()) }
     single { ReconciliationService(database = get(), clock = get(), timeZone = get()) }
     single {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

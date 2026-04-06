@@ -25,15 +25,27 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.minutes
 
 class MeetingWorkflowViewModelTest {
+    private val meetings = mutableMapOf<String, MeetingEntity>()
+
     private val fakeMeetingDao = object : MeetingDao {
-        override suspend fun upsert(meeting: MeetingEntity) = Unit
-        override suspend fun update(meeting: MeetingEntity) = Unit
-        override suspend fun getById(id: String): MeetingEntity? = null
-        override suspend fun getByIdForOrganizer(id: String, actorId: String): MeetingEntity? = null
+        override suspend fun upsert(meeting: MeetingEntity) { meetings[meeting.id] = meeting }
+        override suspend fun update(meeting: MeetingEntity) { meetings[meeting.id] = meeting }
+        override suspend fun getById(id: String): MeetingEntity? = meetings[id]
+        override suspend fun getByIdForOrganizer(id: String, actorId: String): MeetingEntity? =
+            meetings[id]?.takeIf { it.organizerId == actorId }
+        override suspend fun getByIdForOwnerOrDelegate(id: String, actorId: String, ownerId: String): MeetingEntity? =
+            meetings[id]?.takeIf { it.organizerId == actorId || it.organizerId == ownerId }
         override fun observeById(id: String): Flow<MeetingEntity?> = emptyFlow()
-        override suspend fun getByOrganizer(userId: String, limit: Int) = emptyList<MeetingEntity>()
-        override suspend fun page(limit: Int) = emptyList<MeetingEntity>()
-        override suspend fun pageByResource(resourceId: String, deniedStatus: String, rangeStart: Long, rangeEnd: Long, limit: Int) = emptyList<MeetingEntity>()
+        override suspend fun getByOrganizer(userId: String, limit: Int) = meetings.values.filter { it.organizerId == userId }.take(limit)
+        override suspend fun page(limit: Int) = meetings.values.take(limit)
+        override suspend fun pageByResource(resourceId: String, deniedStatus: String, rangeStart: Long, rangeEnd: Long, limit: Int) =
+            meetings.values.filter {
+                it.resourceId == resourceId &&
+                    it.status != deniedStatus &&
+                    it.endTime >= rangeStart &&
+                    it.startTime <= rangeEnd
+            }.sortedByDescending { it.startTime }.take(limit)
+        override suspend fun getOverdueApprovedNoShowCandidates(nowMillis: Long, approvedStatus: String): List<MeetingEntity> = emptyList()
         override suspend fun upsertAttendee(attendee: MeetingAttendeeEntity) = Unit
         override suspend fun getAttendees(meetingId: String) = emptyList<MeetingAttendeeEntity>()
         override suspend fun getAttendeesForOrganizer(meetingId: String, actorId: String) = emptyList<MeetingAttendeeEntity>()
@@ -52,6 +64,7 @@ class MeetingWorkflowViewModelTest {
     private val fakeNotificationGateway = object : NotificationGateway {
         override suspend fun scheduleInvoiceReady(invoiceId: String, total: Double) = Unit
         override suspend fun scheduleMeetingNotification(meetingId: String, message: String) = Unit
+        override suspend fun scheduleOrderReminder(orderId: String, message: String) = Unit
     }
 
     private val fakeOrderDao = object : OrderDao {
@@ -70,6 +83,7 @@ class MeetingWorkflowViewModelTest {
     }
 
     private fun createVm(clock: Clock): MeetingWorkflowViewModel {
+        meetings.clear()
         return MeetingWorkflowViewModel(
             validationService = ValidationService(clock),
             permissionEvaluator = PermissionEvaluator(defaultRules()),
@@ -77,7 +91,7 @@ class MeetingWorkflowViewModelTest {
             deviceBindingService = DeviceBindingService(fakeDeviceBindingDao, clock),
             meetingDao = fakeMeetingDao,
             notificationGateway = fakeNotificationGateway,
-            bookingUseCase = BookingUseCase(fakeOrderDao, clock),
+            bookingUseCase = BookingUseCase(fakeMeetingDao, clock),
             clock = clock,
             ioDispatcher = Dispatchers.Unconfined,
         )
@@ -104,6 +118,18 @@ class MeetingWorkflowViewModelTest {
         vm.deny(Role.Supervisor)
 
         assertEquals(MeetingStatus.Denied, vm.state.value.status)
+    }
+
+    @Test
+    fun `companion cannot approve meeting`() {
+        val clock = FixedMeetingClock(Instant.parse("2026-03-30T10:00:00Z"))
+        val vm = createVm(clock)
+
+        vm.submitMeeting(clock.now())
+        vm.approve(Role.Companion)
+
+        assertEquals(MeetingStatus.PendingApproval, vm.state.value.status)
+        assertEquals("Approval denied for role", vm.state.value.note)
     }
 
     @Test
@@ -186,8 +212,60 @@ class MeetingWorkflowViewModelTest {
         assertEquals(null, vm.state.value.attachmentPath)
         assertEquals("Attachment denied for role", vm.state.value.note)
     }
+
+    @Test
+    fun `delegate companion can load delegated owner meeting`() {
+        val clock = FixedMeetingClock(Instant.parse("2026-03-30T10:00:00Z"))
+        val vm = createVm(clock)
+        meetings["m-1"] = MeetingEntity(
+            id = "m-1",
+            organizerId = "operator",
+            resourceId = "res-1",
+            title = "Delegated",
+            startTime = clock.now().toEpochMilliseconds(),
+            endTime = clock.now().plus(30.minutes).toEpochMilliseconds(),
+            status = MeetingStatus.Approved.name,
+        )
+
+        vm.loadMeetingDetail(
+            meetingId = "m-1",
+            role = Role.Companion,
+            actorId = "companion",
+            ownerId = "operator",
+            isDelegate = true,
+        )
+
+        assertEquals("m-1", vm.state.value.meetingId)
+        assertEquals(MeetingStatus.Approved, vm.state.value.status)
+    }
+
+    @Test
+    fun `non delegate cannot load other users meeting`() {
+        val clock = FixedMeetingClock(Instant.parse("2026-03-30T10:00:00Z"))
+        val vm = createVm(clock)
+        meetings["m-2"] = MeetingEntity(
+            id = "m-2",
+            organizerId = "operator",
+            resourceId = "res-1",
+            title = "Private",
+            startTime = clock.now().toEpochMilliseconds(),
+            endTime = clock.now().plus(30.minutes).toEpochMilliseconds(),
+            status = MeetingStatus.Approved.name,
+        )
+
+        vm.loadMeetingDetail(
+            meetingId = "m-2",
+            role = Role.Companion,
+            actorId = "other-companion",
+            ownerId = "other-companion",
+            isDelegate = false,
+        )
+
+        assertEquals("Meeting not found or access denied", vm.state.value.note)
+    }
 }
 
 private class FixedMeetingClock(var current: Instant) : Clock {
     override fun now(): Instant = current
 }
+

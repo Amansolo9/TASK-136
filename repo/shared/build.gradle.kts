@@ -39,6 +39,17 @@ kotlin {
                 implementation("net.zetetic:android-database-sqlcipher:4.5.4")
             }
         }
+
+        val androidUnitTest by getting {
+            dependencies {
+                implementation("junit:junit:4.13.2")
+                implementation("androidx.test:core:1.6.1")
+                implementation("androidx.test.ext:junit:1.2.1")
+                implementation("org.robolectric:robolectric:4.14.1")
+                implementation("androidx.room:room-testing:2.7.0-alpha09")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+            }
+        }
     }
 }
 

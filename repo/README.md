@@ -1,6 +1,15 @@
 # Task-136 Offline Operations Suite
 
-This repository contains a Kotlin Multiplatform app with Android Views UI (`composeApp`) and shared domain/data logic (`shared`).
+This repository contains a Kotlin Multiplatform app for workplace nutrition and resource management. **Android Views is the primary delivered product UI path**, with shared domain/data logic in the `:shared` module.
+
+## Architecture
+
+- **Primary UI**: Android Views (Fragments + XML layouts) in `composeApp/src/androidMain/`
+- **Shared logic**: KMP shared module (`shared/`) containing Room entities/DAOs, RBAC/ABAC, ViewModels, workflows, and business logic
+- **Compose layer**: Exists as a supplementary/reference path, not the primary product delivery
+- **DI**: Koin
+- **Persistence**: Room with SQLCipher encryption at rest
+- **Offline-only**: All business logic is local; no network dependencies
 
 ## Prerequisites
 
@@ -14,54 +23,32 @@ This repository contains a Kotlin Multiplatform app with Android Views UI (`comp
 - `:shared` - KMP shared logic (Room entities/DAO, RBAC/ABAC, ViewModels, workflows, tests)
 - `:composeApp` - Android app module (Activity, Fragments, layouts, manifest)
 
-Declared in `settings.gradle.kts`.
-
 ## Bootstrap and Startup
 
 1. Build shared tests/artifacts:
-
 ```bash
 ./gradlew :shared:testDebugUnitTest
 ```
 
 2. Build Android debug app:
-
 ```bash
 ./gradlew :composeApp:assembleDebug
 ```
 
 3. Install on device/emulator:
-
 ```bash
 adb install -r composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
 4. Launch app entry point:
-
 - Activity: `com.eaglepoint.task136.MainActivity`
 - Manifest: `composeApp/src/androidMain/AndroidManifest.xml`
 
-Windows PowerShell equivalents:
-
-```powershell
-.\gradlew.bat :shared:testDebugUnitTest
-.\gradlew.bat :composeApp:assembleDebug
-adb install -r composeApp\build\outputs\apk\debug\composeApp-debug.apk
-```
-
 ## Test Commands
-
-- Preferred local path (non-Docker):
 
 ```bash
 ./run_tests.sh
-```
-
-`run_tests.sh` first tries local Gradle wrappers, then falls back to Docker if wrappers are unavailable.
-
-- Direct Gradle:
-
-```bash
+# or directly:
 ./gradlew :shared:testDebugUnitTest
 ```
 
@@ -69,37 +56,83 @@ adb install -r composeApp\build\outputs\apk\debug\composeApp-debug.apk
 
 In debug builds, demo users are seeded at first launch from `LocalAuthService`:
 
-- `admin` / `Admin1234!`
-- `supervisor` / `Super1234!`
-- `operator` / `Oper12345!`
-- `viewer` / `Viewer1234!`
-- `companion` / `Companion1!` (delegated to operator)
+- `admin` / `Admin1234!` (Admin role - full access including Admin panel)
+- `supervisor` / `Super1234!` (Supervisor role)
+- `operator` / `Oper12345!` (Operator role)
+- `viewer` / `Viewer1234!` (Viewer role - read-only)
+- `companion` / `Companion1!` (Companion role, delegated to operator)
+
+## Android Views Product Flows
+
+### Authentication
+- Login with password policy (10+ chars, requires number)
+- 5 failed attempts triggers 15-minute lockout
+- 30-minute idle session expiry, 8-hour absolute limit
+- Optional device binding (max 2 devices per user unless admin reset)
+
+### Dashboard
+- Resource list with RecyclerView + DiffUtil
+- Navigation to Calendar, Cart, Learning, and Admin (Admin role only)
+- Session stats (resources, cart, invoices, refunds)
+
+### Admin Panel (Admin role only)
+Accessible from Dashboard for Admin users:
+- **Resource Management**: Add/delete resources with name, category, units, price, allergens
+- **Business Rules Display**: Price range validation, allergen requirements, auth policies
+- **Device Binding Reset**: Reset device bindings for any user
+
+### Calendar / Booking
+- Resource-driven slot suggestions (up to 3 available within 14 days, 10-min buffer)
+- Meeting submission with conflict detection against existing bookings
+- Form version resolved via canary evaluation (role/device-group gating)
+
+### Meeting Detail
+- Attendee management (ABAC-gated: Supervisor/Admin can see attendees)
+- Approval/denial workflow (Supervisor/Admin only)
+- Check-in within +/-10 minute window
+- Auto no-show tracking after 10 minutes
+- Attachment management (add/remove)
+- Agenda editing
+
+### Cart / Ordering
+- Catalog-backed item addition from DAO-persisted resources
+- Split/merge cart items
+- Checkout generates persisted invoice
+- Invoice detail access with persistence-backed loading
+- Notes and tags display
+
+### Invoice Detail
+- Loaded from Room persistence (not volatile in-memory state)
+- Subtotal, tax (Admin-only visibility), total display
+- Targeted refund by specific invoice ID (not "latest in memory")
+
+### Dynamic Form Engine / Canary Rollout
+- `CanaryEvaluator` bound in production Koin DI
+- Meeting request workflow uses versioned form engine
+- Form version varies by role and device group via canary config
+- Form version metadata persisted with meeting record
+
+### Offline Governance / Rule-Hit Analytics
+- Validation failures (price violations) logged to `GovernanceDao`
+- Allergen block events logged as rule hits
+- Refund denial events logged with reason
+- `RuleHitObserver` monitors open rule hits for anomaly detection
+- `ReconciliationService` handles daily closure and weekly settlement
+
+## Security Controls
+
+- **RBAC**: Role-based permissions (Admin, Supervisor, Operator, Viewer, Companion)
+- **ABAC**: Attribute-based policies for attendee lists, invoice tax fields, refund issuance
+- **Object-level authorization**: All order/invoice loads require actor context; Admin/Supervisor get elevated access
+- **Encrypted at rest**: SQLCipher database encryption
+- **Masked logs**: Sensitive fields redacted from log output
+- **Device binding**: Max 2 devices per user, admin-resettable
 
 ## Static Verification Playbook
 
-Use this checklist for review without emulator instrumentation:
-
-1. **Build graph and module wiring**
-   - Confirm `settings.gradle.kts` includes only `:shared` and `:composeApp`
-   - Confirm app entry is `MainActivity` in manifest
-
-2. **Security controls**
-   - Verify session expiry hooks in `MainActivity`
-   - Verify attendee read/write ABAC checks in `MeetingWorkflowViewModel`
-   - Verify object-level DAO filters (`OrderDao`, `CartDao`, `MeetingDao`)
-
-3. **Required Android Views flows**
-   - Verify fragment navigation for Calendar, Meeting Detail, Invoice Detail
-   - Confirm corresponding XML layouts exist under `composeApp/src/androidMain/res/layout`
-
-4. **Finance and receipts**
-   - Verify refund path uses `OrderStateMachine` transition success checks
-   - Verify receipt sharing uses `FileProvider` and chooser intent on Android
-
-5. **Delegation attribution**
-   - Confirm owner-vs-actor context propagation in order/cart/meeting flows
-   - Confirm companion operations can execute on behalf of delegated owner
-
-6. **Unit tests**
-   - Run `./run_tests.sh`
-   - If SDK path missing, configure `ANDROID_HOME` or `local.properties` and rerun
+1. **Security**: Verify no `loadOrderById(orderId)` single-param exists; all loads require role+actorId
+2. **Admin flow**: Verify `AdminFragment` exists and is reachable via `navigateToAdmin()` in Dashboard
+3. **Canary integration**: Verify `CanaryEvaluator` is in `sharedCoreModule` DI; `MeetingWorkflowViewModel.submitMeeting` uses `resolveFormVersion`
+4. **Invoice persistence**: Verify `loadInvoiceById` loads from `InvoiceDao`; `refundInvoice` targets specific ID
+5. **Governance analytics**: Verify `GovernanceAnalytics` is called from `OrderWorkflowViewModel` and `OrderFinanceViewModel`
+6. **Tests**: Run `./run_tests.sh` - covers authorization, admin nav, canary, invoice persistence, governance
